@@ -1,0 +1,22 @@
+# Local MongoDB for the demo laptop (ARCHITECTURE.md section 10). Dev uses the shared Atlas instead.
+#   docker compose up -d mongo
+#   restore the KB from Atlas:
+#     mongodump --uri "$ATLAS_URI" --db debate_agent --archive=kb.archive
+#     mongorestore --uri mongodb://localhost:27017 --archive=kb.archive
+# then MONGODB_URI=mongodb://localhost:27017 in backend/.env
+services:
+  mongo:
+    image: mongo:7.0
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  mongo-data:

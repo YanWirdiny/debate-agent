@@ -10,8 +10,11 @@ import logging
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 
+import websockets
+
+from app import db as dbm
 from app import ingest
 from app.aggregator import DEFAULT_AUDIENCE_MIN_CONF, Aggregator
 from app.eventlog import EventSink, EventWriter
@@ -37,6 +40,11 @@ from app.segmenter import Segmenter
 log = logging.getLogger(__name__)
 
 TURN_HISTORY = 8
+WARMUP_SILENCE_S = 1.0
+MAX_RECONNECTS = 3
+FINAL_RESULTS_TIMEOUT_S = 10.0
+
+Source = Literal["replay", "deepgram"]
 
 
 class SessionContext:
@@ -111,8 +119,11 @@ FallacyFn = Callable[..., Awaitable[None]]
 class SessionRunner:
     """One live session: transcript source -> segmenter -> context -> lanes -> aggregator -> hubs/log.
 
-    Sources: `replay` (REPLAY_TRANSCRIPT=1 and the mock stream: transcript words at 1x).
-    Deepgram streaming is the next slice.
+    Sources:
+    - `deepgram`: clip audio pumped at 1x to Deepgram streaming; speaker/role from the clip timeline.
+      On a drop it reconnects and resumes from the current clip time (up to MAX_RECONNECTS), then
+      falls back to the pre-made transcript from that point, with an operator banner.
+    - `replay`: pre-made transcript words at 1x (REPLAY_TRANSCRIPT=1, mock stream, tests).
     """
 
     def __init__(
@@ -132,6 +143,10 @@ class SessionRunner:
         lane_concurrency: int = 8,
         lane_timeout: float = 1.2,
         speed: float = 1.0,
+        source: Source = "replay",
+        deepgram_key: str = "",
+        deepgram_url: str = ingest.DEEPGRAM_LISTEN_URL,
+        db: Any = None,
     ) -> None:
         self.session_id = session_id
         self.clip_id = clip_id
@@ -143,10 +158,18 @@ class SessionRunner:
         self.run_fallacy = run_fallacy
         self.lane_timeout = lane_timeout
         self.speed = speed
+        self.source = source
+        self.deepgram_key = deepgram_key
+        self.deepgram_url = deepgram_url
+        self.db = db
+        self.dg: ingest.DeepgramLive | None = None
+        self.pump: ingest.AudioPump | None = None
+        self.reconnects = 0
         self.ctx = SessionContext(session_id)
         self.writer = EventWriter(session_id, sink=sink, fallback_path=fallback_path)
         self.aggregator = Aggregator(audience_min_conf, operator=self.operator, audience=self.audience, writer=self.writer)
-        self.segmenter = Segmenter(session_id)  # replay words carry their own speaker/role
+        self.segmenter = Segmenter(session_id)  # replay words carry their own speaker/role; deepgram: set in warm_up
+        self._words: list[Word] = []
         self.slow_q: asyncio.Queue[SlowJob] = asyncio.Queue()
         self.lane_sem = asyncio.Semaphore(lane_concurrency)
         self.t0_wall: float | None = None
@@ -160,12 +183,36 @@ class SessionRunner:
     # --- lifecycle ---
 
     async def warm_up(self) -> None:
-        """Phase 3 adds KB load, embedding model, P2 warm_up(). For now: validate the clip."""
-        if self.clip.transcript_path is None:
-            raise ValueError(f"clip {self.clip_id} has no transcript_path (needed for replay)")
-        self._words = ingest.load_transcript_words(self.clip.transcript_path)
+        """ARCHITECTURE.md section 8. Done here: clip checks, timeline, Deepgram open + 1 s silence.
+        Phase 3 adds KB load, embedding model and P2's warm_up()."""
+        if self.clip.transcript_path:
+            self._words = ingest.load_transcript_words(self.clip.transcript_path)
+        if self.source == "replay":
+            if not self._words:
+                raise ValueError(f"clip {self.clip_id} has no transcript_path (needed for replay)")
+        else:
+            await self._warm_up_deepgram()
         self.ready = True
         await self.operator.broadcast(ReadyMessage(session_id=self.session_id))
+
+    async def _warm_up_deepgram(self) -> None:
+        ingest.open_pcm(self.clip.audio_path).close()  # fail now, not at start
+        timeline = self.clip.timeline
+        if not timeline and self.db is not None:
+            timeline = await dbm.load_timeline(self.db, self.clip_id)
+        if not timeline:
+            raise ValueError(f"clip {self.clip_id} has no timeline (run scripts/label_clip.py)")
+        self.segmenter = Segmenter(self.session_id, ingest.TimelineLookup(timeline))
+        self.dg = await self._open_deepgram()
+
+    async def _open_deepgram(self) -> ingest.DeepgramLive:
+        dg = ingest.DeepgramLive(self.deepgram_key, url=self.deepgram_url)
+        try:
+            await dg.connect()
+        except websockets.InvalidHandshake as e:  # e.g. HTTP 401 for a bad key
+            raise ConnectionError(f"Deepgram rejected the stream: {e} (check DEEPGRAM_API_KEY)") from e
+        await dg.send(ingest.silence(WARMUP_SILENCE_S))
+        return dg
 
     async def start(self, lead_s: float = 0.3) -> float:
         """Starts the source and long-lived tasks; returns t0_wall (clip t=0 in wall time)."""
@@ -177,7 +224,10 @@ class SessionRunner:
         self.writer.put("session_start", {"session_id": self.session_id, "clip_id": self.clip_id, "t0_wall": self.t0_wall})
         started = StartedMessage(t0_wall=self.t0_wall)
         await asyncio.gather(self.operator.broadcast(started), self.audience.broadcast(started))
-        await self.operator.broadcast(BannerMessage(level="info", text=f"Replay mode: pre-made transcript at {self.speed:g}x"))
+        if self.source == "replay":
+            await self.operator.broadcast(BannerMessage(level="info", text=f"Replay mode: pre-made transcript at {self.speed:g}x"))
+        self._db_task(dbm.save_session, self.session_id, clip_id=self.clip_id, source=self.source,
+                      t0_wall=self.t0_wall, speed=self.speed)
         self._tasks = [
             asyncio.create_task(self.writer.run(), name="writer"),
             asyncio.create_task(self.aggregator.run(), name="aggregator"),
@@ -205,18 +255,101 @@ class SessionRunner:
         self.writer.put("session_end", {"session_id": self.session_id})
         await self.writer.stop()
         await asyncio.gather(*(t for t in self._tasks if t.get_name() != "source"), return_exceptions=True)
+        if self.dg is not None:
+            await self.dg.close()
+        self._db_task(dbm.save_session, self.session_id, ended_at=time.time(), event_count=self.writer._seq,
+                      lane_timeouts=self.lane_timeouts, reconnects=self.reconnects)
         self._done.set()
+
+    def _db_task(self, fn: Callable[..., Awaitable[Any]], *args: Any, **kw: Any) -> None:
+        """Fire-and-forget Mongo write (session records); never on the hot path, never raises."""
+        if self.db is None:
+            return
+
+        async def go() -> None:
+            try:
+                await fn(self.db, *args, **kw)
+            except Exception as e:
+                log.warning("mongo %s failed: %s", fn.__name__, e)
+
+        task = asyncio.get_running_loop().create_task(go())
+        self._lane_tasks.add(task)
+        task.add_done_callback(self._lane_tasks.discard)
 
     # --- hot path ---
 
     async def _source(self) -> None:
         assert self.t0_wall is not None
         try:
-            await ingest.replay_words(self._words, self.t0_wall, self.on_words, speed=self.speed)
-            for seg in self.segmenter.flush():
-                await self.on_segment(seg)
+            if self.source == "deepgram":
+                await self._source_deepgram()
+            else:
+                await self._replay_from(0.0)
+            await self.on_utterance_end()
         finally:
             asyncio.get_running_loop().create_task(self._finish())
+
+    async def _replay_from(self, t: float) -> None:
+        assert self.t0_wall is not None
+        words = [w for w in self._words if w.t_end > t]
+        await ingest.replay_words(words, self.t0_wall, self.on_words, speed=self.speed)
+
+    async def _source_deepgram(self) -> None:
+        assert self.t0_wall is not None
+        start_s = 0.0
+        while True:
+            pump = self.pump = ingest.AudioPump(speed=self.speed, start_s=start_s)
+            reader: asyncio.Task[None] | None = None
+            try:
+                dg = self.dg = self.dg or await self._open_deepgram()
+                offset = start_s - dg.sent_s  # clip time = Deepgram time + offset
+                reader = asyncio.create_task(ingest.stt_reader(dg, offset, self.on_words, self.on_utterance_end))
+                await self._pump_until_drop(pump, dg, reader)
+                await dg.finish()
+                try:
+                    await asyncio.wait_for(reader, FINAL_RESULTS_TIMEOUT_S)
+                except TimeoutError:
+                    log.warning("Deepgram did not close %.0fs after the clip ended", FINAL_RESULTS_TIMEOUT_S)
+                return
+            except (websockets.ConnectionClosed, OSError, TimeoutError) as e:
+                if self.dg is not None:
+                    await self.dg.close()
+                self.dg = None
+                start_s = pump.position
+                await self.on_utterance_end()  # do not glue sentences across the gap
+                self.reconnects += 1
+                log.warning("Deepgram stream dropped at %.1fs: %r", start_s, e)
+                if self.reconnects > MAX_RECONNECTS:
+                    await self._fallback_to_transcript(start_s)
+                    return
+                await self.operator.broadcast(BannerMessage(
+                    level="warn", text=f"Speech-to-text dropped at {start_s:.0f}s; reconnecting ({self.reconnects}/{MAX_RECONNECTS})"))
+            finally:
+                if reader is not None and not reader.done():
+                    reader.cancel()
+
+    async def _pump_until_drop(self, pump: ingest.AudioPump, dg: ingest.DeepgramLive, reader: asyncio.Task[None]) -> None:
+        """Run the pump; if the reader ends first (Deepgram closed on us), treat it as a drop."""
+        pump_task = asyncio.create_task(pump.run(self.clip, dg, self.t0_wall or 0.0))
+        done, _ = await asyncio.wait({pump_task, reader}, return_when=asyncio.FIRST_COMPLETED)
+        if pump_task in done:
+            pump_task.result()
+            return
+        pump_task.cancel()
+        await asyncio.gather(pump_task, return_exceptions=True)
+        exc = reader.exception()
+        raise exc if exc else websockets.ConnectionClosed(None, None)
+
+    async def _fallback_to_transcript(self, from_t: float) -> None:
+        if not self._words:
+            await self.operator.broadcast(BannerMessage(level="error", text="Speech-to-text lost and no pre-made transcript; captions stopped"))
+            return
+        await self.operator.broadcast(BannerMessage(level="warn", text=f"Speech-to-text lost; switched to pre-made transcript at {from_t:.0f}s"))
+        await self._replay_from(from_t)
+
+    async def on_utterance_end(self) -> None:
+        for seg in self.segmenter.flush():
+            await self.on_segment(seg)
 
     async def on_words(self, words: list[Word]) -> None:
         for seg in self.segmenter.on_final(words):

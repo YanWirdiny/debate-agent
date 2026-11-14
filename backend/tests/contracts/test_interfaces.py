@@ -18,7 +18,7 @@ CLASSES = {"app.ingest": ["AudioPump", "TimelineLookup"], "app.segmenter": ["Seg
 IMPLEMENTED = {
     "app.lanes.fake.run_claims", "app.lanes.fake.run_fallacy", "app.lanes.fake.run_consistency",
     # P1 Phase 1
-    "app.ingest.TimelineLookup", "app.segmenter.Segmenter", "app.aggregator.Aggregator", "app.eventlog.EventWriter",
+    "app.ingest.AudioPump", "app.ingest.TimelineLookup", "app.segmenter.Segmenter", "app.aggregator.Aggregator", "app.eventlog.EventWriter",
 }
 
 def check(actual, expected):
