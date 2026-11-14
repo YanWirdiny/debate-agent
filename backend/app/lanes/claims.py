@@ -41,13 +41,6 @@ VERDICT_CATEGORY: dict[str, Category] = {
 }
 U_CONFIDENCE = 0.3
 
-log = logging.getLogger(__name__)
-
-# Embed + match_bank run only after extraction returns, and _lane cancels the whole
-# lane at LANE_TIMEOUT_S. Leave that tail free so a slow model call cannot eat it.
-CLAIMS_LLM_RESERVE_S = 0.4
-CLAIMS_LLM_TIMEOUT_S = LANE_TIMEOUT_S - CLAIMS_LLM_RESERVE_S
-
 
 class ExtractedClaim(ContractModel):
     text: str = Field(min_length=1)
