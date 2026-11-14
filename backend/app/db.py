@@ -36,8 +36,15 @@ INDEXES: dict[str, list[IndexModel]] = {
     "sessions": [IndexModel([("session_id", ASCENDING)], unique=True, name="session_id")],
     "timelines": [IndexModel([("clip_id", ASCENDING)], unique=True, name="clip_id")],
 }
-# P2: KB collection indexes go here, e.g. "claims": [IndexModel([("speaker_id", 1)])].
-KB_INDEXES: dict[str, list[IndexModel]] = {}
+# KB collections (shapes in tests/fixtures/kb_small/README.md); loaded by scripts/embed_kb.py.
+KB_INDEXES: dict[str, list[IndexModel]] = {
+    "claims": [IndexModel([("speaker_id", ASCENDING), ("reviewed", ASCENDING)], name="speaker_reviewed")],
+    "statements": [IndexModel([("statement_id", ASCENDING)], unique=True, name="statement_id"),
+                   IndexModel([("speaker_id", ASCENDING)], name="speaker_id")],
+    "passages": [IndexModel([("passage_id", ASCENDING)], unique=True, name="passage_id"),
+                 IndexModel([("topic", ASCENDING)], name="topic")],
+    "speaker_digests": [IndexModel([("speaker_id", ASCENDING)], unique=True, name="speaker_id")],
+}
 
 
 class _LenientSettings(Settings):

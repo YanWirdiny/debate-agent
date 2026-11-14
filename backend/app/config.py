@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     replay_transcript: bool = False
     replay_events: str = ""
     audience_min_conf: float = Field(default=0.80, ge=0, le=1)
-    intel: Literal["fake", "real"] = "fake"  # P1: fake lanes/async plane until P2's modules land
+    intel: Literal["fake", "real", "bank"] = "fake"  # fake lanes | full real intel | bank: real claims, Groq only
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)

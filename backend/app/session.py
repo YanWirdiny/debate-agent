@@ -115,6 +115,7 @@ class SessionContext:
                 recent_segments=before[-3:],
                 rolling_summary=self.rolling_summary,
                 speaker_digest=digest,
+                claim_ledger=list(self.claim_ledger.get(seg.speaker_id, [])),  # consistency runs inside claims
             )
         if lane == "fallacy":
             turn = self._current_turn if self.current_turn_speaker == seg.speaker_id else [seg]
@@ -133,7 +134,7 @@ class SessionContext:
 @dataclass
 class Intel:
     """P2's functions, as the runner calls them. `fake()` runs the pipeline with no keys or KB;
-    `real()` is P2's implementation (switch with INTEL=real once P2's modules land)."""
+    `real()` is P2's implementation; `bank()` is the Groq-only reduced mode."""
 
     name: str
     run_claims: Callable[..., Awaitable[None]]
@@ -159,10 +160,32 @@ class Intel:
                    async_jobs.prefetch, async_jobs.summarize, warmup.warm_up, KB.load)
 
     @classmethod
+    def bank(cls) -> Intel:
+        """Explicit reduced mode (Groq only, no Gemini): real KB, claims lane (bank, retrieval + stance,
+        consistency) and warm-up. No fallacy lane, no grounded verdicts (U stays U), no prefetch,
+        no rolling summary. The operator sees a banner saying so; nothing is faked."""
+        real = cls.real()
+
+        async def no_fallacy(seg, view, emit):
+            return None
+
+        async def no_verdict(job, kb):
+            return None
+
+        async def no_prefetch(job):
+            return (getattr(job, "topic", None) or "general", [])
+
+        async def keep_summary(prev, turns):
+            return prev
+
+        return cls("bank", real.run_claims, no_fallacy, no_verdict, no_prefetch, keep_summary, real.warm_up, real.load_kb)
+
+    @classmethod
     def by_name(cls, name: str) -> Intel:
-        if name not in ("fake", "real"):
-            raise ValueError(f"INTEL must be fake or real, got {name!r}")
-        return cls.real() if name == "real" else cls.fake()
+        modes = {"fake": cls.fake, "real": cls.real, "bank": cls.bank}
+        if name not in modes:
+            raise ValueError(f"INTEL must be fake, real or bank, got {name!r}")
+        return modes[name]()
 
 
 class SessionRunner:
@@ -288,7 +311,7 @@ class SessionRunner:
                         self.ctx.participants[spk] = digest
             await self.intel.warm_up(self.kb, speakers)  # type: ignore[arg-type]
         except NotImplementedError as e:
-            raise ValueError(f"INTEL={self.intel.name} but P2's warm-up/KB is not implemented yet; use INTEL=fake") from e
+            raise ValueError(f"INTEL={self.intel.name}: an intel module is not implemented; use INTEL=fake") from e
 
     async def _warm_up_deepgram(self) -> None:
         ingest.open_pcm(self.clip.audio_path).close()  # fail now, not at start
@@ -341,6 +364,9 @@ class SessionRunner:
         elif self.source == "events":
             await self.operator.broadcast(BannerMessage(
                 level="info", text=f"Recorded run {self.replay_session_id} replayed from its event log (not live)"))
+        if self.intel.name == "bank" and self.source != "events":
+            await self.operator.broadcast(BannerMessage(
+                level="info", text="Bank-only mode: claims + consistency; no fallacy lane, no web verdicts (U stays U)"))
         self._db_task(dbm.save_session, self.session_id, clip_id=self.clip_id, source=self.source, intel=self.intel.name,
                       t0_wall=self.t0_wall, speed=self.speed, replay_of=self.replay_session_id or None)
         self._tasks = [
@@ -510,6 +536,9 @@ class SessionRunner:
     async def on_words(self, words: list[Word]) -> None:
         for seg in self.segmenter.on_final(words):
             await self.on_segment(seg)
+        partial = self.segmenter.partial()
+        if partial is not None:  # live captions at speaking pace; not logged, not analysed
+            await asyncio.gather(self.operator.broadcast(partial), self.audience.broadcast(partial))
 
     async def on_segment(self, seg: Segment) -> None:
         self.ctx.on_segment(seg)

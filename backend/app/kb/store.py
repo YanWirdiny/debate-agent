@@ -16,6 +16,11 @@ from app.models import BankHit, Claim, ContractModel, Passage, SpeakerDigest, St
 from app.verify import evidence_span
 
 
+# Full retained source texts behind bank evidence (one passage per source_id, see source_texts()).
+# They back provenance checks only: never retrieval candidates or topic centroids (too long for stance).
+SOURCE_TOPIC = "_sources"
+
+
 class ReviewedClaim(ContractModel):
     speaker_id: str
     reviewed: bool = False
@@ -61,7 +66,8 @@ class KnowledgeBase:
             if self._encoder is None:
                 from sentence_transformers import SentenceTransformer
                 # Do not download model weights silently during a live session.
-                self._encoder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", local_files_only=True)
+                # CPU: ~7 ms per sentence steady state, faster than MPS/GPU for single-sentence calls.
+                self._encoder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", local_files_only=True, device="cpu")
             vectors = np.asarray(self._encoder.encode(texts, normalize_embeddings=True), dtype=float)
         if vectors.ndim != 2 or vectors.shape[0] != len(texts) or not vectors.shape[1] or not np.isfinite(vectors).all():
             raise ValueError("embedding model returned invalid vectors")
@@ -131,7 +137,8 @@ class KnowledgeBase:
         vector = self._encode([text])[0]
         with self._lock:
             # Prefer the active shard, then fill from the remaining shards.
-            ranked = sorted(self._passages, key=lambda p: (topic is not None and p.topic == topic, _cosine(vector, p.embedding)), reverse=True)
+            pool = [p for p in self._passages if p.topic != SOURCE_TOPIC]
+            ranked = sorted(pool, key=lambda p: (topic is not None and p.topic == topic, _cosine(vector, p.embedding)), reverse=True)
             return [p.model_copy(deep=True) for p in ranked[:k]]
 
     def search_statements(self, speaker_id: str, text: str, k: int = 3) -> list[Statement]:
@@ -154,7 +161,7 @@ class KnowledgeBase:
     def topic_for(self, text: str) -> str | None:
         vector = self._encode([text])[0]
         with self._lock:
-            topics = {p.topic for p in self._passages if p.topic}
+            topics = {p.topic for p in self._passages if p.topic and p.topic != SOURCE_TOPIC}
             scores = [(topic, _cosine(vector, np.mean([p.embedding for p in self._passages if p.topic == topic], axis=0))) for topic in sorted(topics)]
             topic, score = max(scores, key=lambda item: item[1], default=(None, 0.0))
             return topic if score > 0 else None

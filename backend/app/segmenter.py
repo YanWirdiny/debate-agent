@@ -6,7 +6,7 @@ A speaker change mid-buffer always forces a split: never a cross-speaker sentenc
 from __future__ import annotations
 
 from app.ingest import TimelineLookup
-from app.models import Segment, Word, segment_id
+from app.models import PartialMessage, PartialWord, Segment, Word, segment_id
 
 LOW_CONF = 0.85
 MAX_WORDS = 60  # force a split on very long unpunctuated runs so lanes are not starved
@@ -38,6 +38,17 @@ class Segmenter:
             if _ends_sentence(w.text) or len(self._buf) >= MAX_WORDS:
                 out.append(self._emit())
         return out
+
+    def partial(self) -> PartialMessage | None:
+        """The sentence still being spoken (live captions). Carries the id its Segment will get."""
+        if not self._buf:
+            return None
+        first = self._buf[0]
+        return PartialMessage(
+            segment_id=segment_id(self.session_id, self._seq), speaker_id=first.speaker_id or "",
+            role=first.role or "speaker",
+            words=[PartialWord(text=w.text, t_start=w.t_start, t_end=w.t_end) for w in self._buf],
+        )
 
     def flush(self) -> list[Segment]:
         """Deepgram utterance_end, or end of stream."""

@@ -63,3 +63,32 @@ and prompts except claim_extract. No other P2 feature is implemented here.
 The mocked Deepgram localhost tests require permission to bind local sockets.
 A final conservative STT guard change was rechecked with all contract/P2 tests:
 84 passed. `git diff --check` passes. No paid API requests, pushes or merges.
+
+## Update: remaining P2 work finished by P1 (2026-11-14, authorized; branch `p1/finish-p2`)
+
+Answers to "Decisions to resolve with P1" above:
+- Bank-only mode: `INTEL=bank` (Groq only: claims incl. retrieval/stance + consistency; no fallacy,
+  no Gemini; operator banner). `INTEL=real` is now complete.
+- Dedupe: the aggregator now requires equal quantities and negation before cosine/text counts, so
+  ClaimRecords carry their embedding again.
+- `speaker_digests`: P1 owns the indexes (`db.KB_INDEXES`, all four KB collections); `embed_kb.py` loads it.
+- Bank confidence stays the fixed 0.90 (reviewed provenance), unchanged.
+- MiniLM: `scripts/embed_kb.py --download-model`; the store now pins it to CPU (~7 ms/sentence;
+  MPS was slower for single sentences). Warm-up runs 3 dummy encodes.
+- Pending contract: merged to main. Lanes that cannot produce a valid result raise -> `pending/error`.
+
+Changes to Sync 1 code, for review:
+- `verify.stt_safe`: blocks when the segment is < .85, a low-confidence word is a number/negation
+  ANYWHERE in the sentence, or ANY low-confidence word is inside the span. A low-confidence filler
+  word outside the span ("ago") no longer blocks (on economy_v2 the old rule blocked every flag).
+- `kb.store`: passages with topic `_sources` (full source texts behind bank evidence) are excluded
+  from `search_passages` and `topic_for`.
+
+Added: retrieval + stance (quote must be verbatim in the cited passage, else U), U -> VerdictJob,
+consistency (KB statements + session ledger, cosine >= .75 -> nli; session-only differences are
+operator-only), fallacy (8 types, verbatim span, strawman needs the opponent's words, verified >= .80),
+grounded_verdict/prefetch (quote must be found on the fetched page, else operator-only / dropped),
+summarize, warm-up, all prompts, and the five prep scripts (file layout in `scripts/kb_files.py`).
+Tests: `tests/intel/test_lanes_async.py`, `test_prep_scripts.py`, `test_real_session.py` (141 total).
+Not verified: real provider behaviour (no keys on this machine), Gemini structured output together
+with Google Search on the configured model, real claim-bank data (needs human review).

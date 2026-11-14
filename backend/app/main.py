@@ -7,7 +7,7 @@ Audience is receive-only. One live session per process (state is in memory).
 Startup reads Settings (backend/.env):
 - source: REPLAY_EVENTS=<session_id> replays a recorded run; REPLAY_TRANSCRIPT=1 plays the
   pre-made transcript; otherwise clip audio streams to Deepgram.
-- INTEL=fake|real: fake lanes and async plane, or P2's real ones.
+- INTEL=fake|real|bank: fake lanes; P2's real intel; or bank-only (Groq only, no fallacy/Gemini).
 MongoDB holds the event log and session records. Every event is also archived locally in
 data/runs/<session_id>/log.jsonl, so reports and REPLAY_EVENTS work with the network off.
 
@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import TypeAdapter, ValidationError
 
 from app import db as dbm
@@ -187,6 +187,24 @@ def create_app(manager: SessionManager | None = None) -> FastAPI:
     @app.get("/clips")
     async def clips() -> list[dict]:
         return [{"clip_id": c.clip_id, "title": c.title, "duration": c.duration} for c in ingest.list_clips()]
+
+    @app.get("/clips/{clip_id}/video")
+    async def clip_video(clip_id: str) -> FileResponse:
+        """The clip video the browser plays (range requests supported, so seeking works)."""
+        clip = next((c for c in ingest.list_clips() if c.clip_id == clip_id), None)
+        if clip is None or not clip.video_path or not Path(clip.video_path).is_file():
+            raise HTTPException(status_code=404, detail=f"no video for clip {clip_id}")
+        return FileResponse(clip.video_path, media_type="video/mp4")
+
+    @app.get("/state")
+    async def state() -> dict:
+        """Current session, for a view that connects late (audience video sync, operator reload)."""
+        r = mgr().runner
+        if r is None:
+            return {"session_id": None, "clip_id": None, "t0_wall": None, "speed": mgr().speed,
+                    "source": mgr().source, "intel": mgr().intel}
+        return {"session_id": r.session_id, "clip_id": r.clip_id, "t0_wall": r.t0_wall, "speed": r.speed,
+                "source": r.source, "intel": r.intel.name}
 
     @app.get("/sessions")
     async def sessions_list() -> list[dict]:

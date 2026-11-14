@@ -4,8 +4,8 @@
 - operator gets every version; audience gets a flag the first time `is_public()` is true,
   updates while it stays public, and a removal when it stops being public
 - killed is final: later lane or worker updates for that id are ignored
-- dedupe (CONTEXT.md 5.6): a new claims-lane flag for the same speaker and same claim (cosine >= 0.9
-  on claim embeddings, or same normalized claim text) as an earlier live flag of the same category is
+- dedupe (CONTEXT.md 5.6): a new claims-lane flag for the same speaker and same claim (same
+  quantities and negation, AND cosine >= 0.9 on claim embeddings or same normalized claim text) as an earlier live flag of the same category is
   not shown again; the earlier flag gets `repeat_count + 1`. Needs the lane's ClaimRecord (with
   `annotation_id`) to be emitted no later than the annotation itself.
 - replay mode (`preserve=True`): versions and latencies come from the recorded log unchanged
@@ -64,12 +64,27 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+%", "%", re.sub(r"[^a-z0-9%]+", " ", text.lower())).strip()
 
 
+_NEGATION = re.compile(r"\b(?:not|no|never|none|nobody|nothing|neither|nor|without|n't)\b|n't\b")
+_QUANTITY = re.compile(r"\d+(?:[.,]\d+)*\s*(?:%|percent(?:age points?)?|trillion|billion|million|thousand)?")
+
+
+def _guards(text: str) -> tuple[list[str], int]:
+    """Quantities (with units) and negation count: embeddings place '3%' near '5%' and 'did' near
+    'did not', so cosine alone must never merge them (P2_SYNC1.md)."""
+    t = text.lower().replace("’", "'")
+    quantities = [re.sub(r"[\s,]+", "", q) for q in _QUANTITY.findall(t)]
+    return quantities, len(_NEGATION.findall(t))
+
+
 def same_claim(a: ClaimRecord, b: ClaimRecord) -> bool:
     if a.speaker_id != b.speaker_id:
         return False
+    ta, tb = a.claim.decontextualized or a.claim.text, b.claim.decontextualized or b.claim.text
+    if _guards(ta) != _guards(tb):
+        return False
     if a.claim.embedding and b.claim.embedding:
         return _cosine(a.claim.embedding, b.claim.embedding) >= DEDUPE_COSINE
-    return _norm(a.claim.decontextualized or a.claim.text) == _norm(b.claim.decontextualized or b.claim.text)
+    return _norm(ta) == _norm(tb)
 
 
 class Aggregator:

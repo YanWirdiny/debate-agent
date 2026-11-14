@@ -89,3 +89,15 @@ async def test_no_pending_when_lanes_finish(tmp_path):
     rep = reports.build_report(read_jsonl(tmp_path / "ok" / "log.jsonl"))
     assert rep["unchecked"]["by_lane"] == {}
     assert "was checked by every lane" in reports.render_html(rep)
+
+
+async def test_bank_mode_is_explicit_and_skips_fallacy_and_gemini():
+    bank = Intel.by_name("bank")
+    assert bank.name == "bank" and bank.run_claims is Intel.real().run_claims
+    out = []
+    await bank.run_fallacy(None, None, out.append)
+    assert out == [] and await bank.grounded_verdict(None, None) is None
+    assert await bank.summarize("prev", []) == "prev"
+    import pytest
+    with pytest.raises(ValueError, match="fake, real or bank"):
+        Intel.by_name("nope")

@@ -55,9 +55,9 @@ async def check_mongo(s: Settings) -> None:
         line(FAIL, "P1 indexes", f"{e} (the DB user needs readWrite on {s.mongodb_db})")
         return
     names = set(await db.list_collection_names())
-    for coll in ("claims", "statements", "passages"):
+    for coll in ("claims", "statements", "passages", "speaker_digests"):
         n = await db[coll].estimated_document_count() if coll in names else 0
-        line(OK if n else WARN, f"KB collection {coll}", f"{n} docs" + ("" if n else " (P2's embed_kb.py loads it)"))
+        line(OK if n else WARN, f"KB collection {coll}", f"{n} docs" + ("" if n else " (scripts/embed_kb.py loads it)"))
     n_sessions = await db["sessions"].estimated_document_count() if "sessions" in names else 0
     timelines = [d["clip_id"] async for d in db["timelines"].find({}, {"clip_id": 1})] if "timelines" in names else []
     line(OK, "recorded sessions", str(n_sessions))
@@ -74,6 +74,29 @@ def check_deepgram(key: str) -> None:
         line(WARN, "Deepgram key", f"could not reach Deepgram: {e}")
         return
     line(OK if r.status_code == 200 else FAIL, "Deepgram key", "accepted" if r.status_code == 200 else f"HTTP {r.status_code}")
+
+
+def check_model(required: bool) -> None:
+    try:
+        from sentence_transformers import SentenceTransformer
+
+        SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", local_files_only=True)
+        line(OK, "embedding model", "all-MiniLM-L6-v2 cached locally")
+    except Exception:
+        line(FAIL if required else WARN, "embedding model", "not cached: python scripts/embed_kb.py --download-model")
+
+
+def check_dossiers() -> None:
+    from scripts.kb_files import DOSSIERS, read_jsonl
+
+    speakers = sorted({e.speaker_id for c in ingest.list_clips() if c.clip_id != "fixture" for e in c.timeline if e.role == "speaker"})
+    for spk in speakers:
+        d = DOSSIERS / spk
+        rows = read_jsonl(d / "claims.jsonl")
+        reviewed = sum(1 for r in rows if r.get("reviewed"))
+        status = OK if reviewed else WARN
+        line(status, f"dossier {spk}", f"{reviewed} reviewed / {len(rows)} claims" + ("" if d.exists() else
+             " (none: scripts/fetch_factchecks.py + build_dossier.py; id must match the clip timeline)"))
 
 
 def check_clips(live: bool) -> None:
@@ -109,6 +132,8 @@ async def main(no_net: bool) -> int:
     live = mode.startswith("live")
     if not no_net and (live or s.deepgram_api_key.get_secret_value()):
         check_deepgram(s.deepgram_api_key.get_secret_value())
+    check_model(required=s.intel in ("real", "bank"))
+    check_dossiers()
     line(OK if shutil.which("ffmpeg") else WARN, "ffmpeg", "found" if shutil.which("ffmpeg") else "not found (needed to make audio.wav)")
     check_clips(live)
     print("\nready" if not problems else f"\n{problems} problem(s) to fix")
