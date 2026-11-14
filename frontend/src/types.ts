@@ -98,6 +98,12 @@ export interface RemovalMessage {
   status: RemovalStatus;
 }
 
+export interface BannerMessage {
+  type: "banner";
+  level: "info" | "warn" | "error";
+  text: string;
+}
+
 export type ServerMessage =
   | SegmentMessage
   | AnnotationMessage
@@ -105,7 +111,13 @@ export type ServerMessage =
   | MetricsMessage
   | ReadyMessage
   | StartedMessage
-  | RemovalMessage;
+  | RemovalMessage
+  | BannerMessage;
+
+export interface LoadMessage {
+  type: "load";
+  clip_id: string;
+}
 
 export interface StartMessage {
   type: "start";
@@ -117,4 +129,4 @@ export interface KillMessage {
   annotation_id: string;
 }
 
-export type ClientMessage = StartMessage | KillMessage;
+export type ClientMessage = LoadMessage | StartMessage | KillMessage;
