@@ -37,6 +37,7 @@ def build_report(events: list[Event], eval_results: dict[str, Any] | None = None
     final: dict[str, Annotation] = {}
     first: dict[str, Annotation] = {}
     kills = 0
+    pending: dict[str, set[str]] = {}
     for e in events:
         payload = json.loads(e.payload_json)
         if e.type == "session_start":
@@ -52,6 +53,8 @@ def build_report(events: list[Event], eval_results: dict[str, Any] | None = None
             first.setdefault(a.annotation_id, a)
         elif e.type == "kill":
             kills += 1
+        elif e.type == "pending":
+            pending.setdefault(payload["lane"], set()).add(payload["segment_id"])
 
     moderators = {s.speaker_id for s in segments.values() if s.role == "moderator"}
     participants = sorted({s.speaker_id for s in segments.values() if s.role == "speaker"})
@@ -112,6 +115,10 @@ def build_report(events: list[Event], eval_results: dict[str, Any] | None = None
             "p95_ms": percentile([a.latency_ms for a in firsts], 95),
             "p95_bank_ms": percentile(bank, 95),
             "n": len(firsts),
+        },
+        "unchecked": {
+            "speaker_segments": sum(1 for s in segments.values() if s.role == "speaker"),
+            "by_lane": {lane: len(ids) for lane, ids in sorted(pending.items())},
         },
         "session_metrics": end.get("metrics"),
         "methodology": {
@@ -177,7 +184,15 @@ def render_html(r: dict[str, Any]) -> str:
     parts.append("<h2>Methodology</h2><ul>" + "".join(f"<li>{_e(n)}</li>" for n in r["methodology"]["notes"]))
     parts.append(f"<li>Latency, end of sentence to flag: p50 {lat['p50_ms']:.0f} ms, p95 {lat['p95_ms']:.0f} ms "
                  f"(bank hits p95 {lat['p95_bank_ms']:.0f} ms, n={lat['n']}).</li>")
-    parts.append(f"<li>Operator removed {ops['killed']} flag(s); {ops['withdrawn']} withdrawn by later evidence.</li></ul>")
+    parts.append(f"<li>Operator removed {ops['killed']} flag(s); {ops['withdrawn']} withdrawn by later evidence.</li>")
+    un = r["unchecked"]
+    if un["by_lane"]:
+        lanes = ", ".join(f"{_e(lane)} {n}" for lane, n in un["by_lane"].items())
+        parts.append(f"<li>Not checked (lane timed out or failed), out of {un['speaker_segments']} speaker sentences: {lanes}. "
+                     "An unflagged sentence is not necessarily accurate.</li>")
+    else:
+        parts.append(f"<li>Every one of the {un['speaker_segments']} speaker sentences was checked by every lane.</li>")
+    parts.append("</ul>")
     ev = r["methodology"].get("eval")
     if ev and ev.get("per_category"):
         parts.append("<table class='meta'><tr><th>category</th><th>precision</th><th>recall</th><th>n</th></tr>")

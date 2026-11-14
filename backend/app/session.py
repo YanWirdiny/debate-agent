@@ -30,7 +30,9 @@ from app.models import (
     PrefetchJob,
     ClaimRecord,
     Clip,
+    Lane,
     LaneContext,
+    PendingMessage,
     ReadyMessage,
     Segment,
     SegmentMessage,
@@ -435,11 +437,13 @@ class SessionRunner:
         assert self.t0_wall is not None
         t0_rec = json.loads(self._recorded[0].payload_json)["t0_wall"]
         for e in self._recorded[1:]:
-            if e.type not in ("segment", "annotation", "annotation_update"):
+            if e.type not in ("segment", "annotation", "annotation_update", "pending"):
                 continue  # kill shows up as the killed annotation_update that follows it
             await ingest.sleep_until(self.t0_wall + max(0.0, e.ts - t0_rec) / self.speed)
             if e.type == "segment":
                 await self.on_segment(Segment.model_validate_json(e.payload_json))
+            elif e.type == "pending":
+                await self._pending(PendingMessage.model_validate_json(e.payload_json))
             else:
                 self.aggregator.submit(Annotation.model_validate_json(e.payload_json))
 
@@ -532,18 +536,28 @@ class SessionRunner:
     async def _process(self, seg: Segment) -> None:
         async with self.lane_sem:
             await asyncio.gather(
-                self._lane("claims", self.intel.run_claims(seg, self.ctx.view_for(seg, "claims"), self.kb, self.emit, self.slow_q)),
-                self._lane("fallacy", self.intel.run_fallacy(seg, self.ctx.view_for(seg, "fallacy"), self.emit)),
+                self._lane(seg, "claims", self.intel.run_claims(seg, self.ctx.view_for(seg, "claims"), self.kb, self.emit, self.slow_q)),
+                self._lane(seg, "fallacy", self.intel.run_fallacy(seg, self.ctx.view_for(seg, "fallacy"), self.emit)),
             )
 
-    async def _lane(self, name: str, coro: Awaitable[None]) -> None:
+    async def _lane(self, seg: Segment, name: Lane, coro: Awaitable[None]) -> None:
+        """Run one lane under its budget. A timeout cancels it (no late result); a timeout or a
+        failure ships a final `pending` to the operator and the event log (CONTEXT.md rule 7)."""
         try:
             await asyncio.wait_for(coro, self.lane_timeout)
+            return
         except TimeoutError:
             self.metrics.lane_timeouts += 1
-            log.warning("%s lane timed out after %.1fs (pending)", name, self.lane_timeout)
+            log.warning("%s lane timed out after %.1fs on %s (pending)", name, self.lane_timeout, seg.segment_id)
+            reason = "timeout"
         except Exception:
-            log.exception("%s lane failed", name)
+            log.exception("%s lane failed on %s (pending)", name, seg.segment_id)
+            reason = "error"
+        await self._pending(PendingMessage(segment_id=seg.segment_id, lane=name, reason=reason))
+
+    async def _pending(self, msg: PendingMessage) -> None:
+        self.writer.put("pending", msg)
+        await self.operator.broadcast(msg)  # operator only, never the audience
 
     # --- async plane (never on the hot path) ---
 
