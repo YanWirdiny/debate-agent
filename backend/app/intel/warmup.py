@@ -42,7 +42,8 @@ async def warm_up(kb: KnowledgeBase, speaker_ids: list[str]) -> None:
         raise ValueError("real intel needs the knowledge base (check MONGODB_URI, run scripts/embed_kb.py)")
     t = time.perf_counter()
     try:
-        await asyncio.to_thread(kb.search_passages, "warm up", None, 1)
+        for text in ("warm up", "The deficit rose by 5 trillion dollars.", "Prices fell 2 percent."):
+            await asyncio.to_thread(kb.search_passages, text, None, 1)  # first encodes are slow; pay them now
     except OSError as e:  # sentence-transformers with local_files_only and no cached weights
         raise ValueError(EMBED_HINT) from e
     embed_ms = (time.perf_counter() - t) * 1000

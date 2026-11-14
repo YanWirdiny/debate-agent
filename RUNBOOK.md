@@ -17,14 +17,31 @@ cp .env.example .env         # fill in keys; never commit .env
 | `MONGODB_URI` | Atlas `mongodb+srv://user:pass@cluster.../` (dev) or `mongodb://localhost:27017` (demo) |
 | `MONGODB_DB` | database name; P1 creates `events`, `sessions`, `timelines` + indexes on first start |
 | `DEEPGRAM_API_KEY` | live STT and `label_clip.py` |
-| `INTEL` | `fake` (fake lanes, no LLM keys needed) or `real` (P2's lanes) |
+| `INTEL` | `fake` (test lanes, no keys) / `real` (full intel: Groq + Gemini) / `bank` (Groq only: claims + consistency, no fallacy, no web verdicts) |
 | `REPLAY_TRANSCRIPT` | `1` = pre-made transcript instead of Deepgram; also lets the server start without keys |
 | `REPLAY_EVENTS` | `<session_id>` = replay a recorded run (no network needed) |
 
 Check everything: `python scripts/check_setup.py` (Mongo reachable + indexes, KB loaded, Deepgram key,
 each clip's audio/timeline/transcript). Fix every `FAIL`.
 
-## 2. Prepare a clip (P1)
+## 2. Build the knowledge base (once per speaker, needs GOOGLE_FACTCHECK_KEY + GEMINI_API_KEY)
+
+```bash
+python scripts/embed_kb.py --download-model                 # once, with internet (embedding model)
+python scripts/fetch_factchecks.py trump --name "Donald Trump" --query tariffs --query deficit
+python scripts/build_dossier.py trump --name "Donald Trump" --office "Former President"
+# REVIEW data/dossiers/trump/claims.jsonl + statements.jsonl: check each row, set "reviewed": true
+python scripts/build_topics.py trade_tariffs --url <official data page> --url <fact-check page>
+# REVIEW data/topics/<topic>/passages.jsonl, set "reviewed": true on passages worth keeping
+python scripts/embed_kb.py --check && python scripts/embed_kb.py   # validate, then load into Mongo
+python scripts/run_eval.py                                  # needs data/eval/labeled.jsonl (50-100 rows)
+```
+
+Speaker ids = the clip timeline ids (`harris`, `trump`, `el_sayed`, `rogers`). Equal depth per speaker.
+Only reviewed rows load; a claim whose quote is not verbatim in its source is skipped with a message.
+`data/raw/` (fetched pages) is gitignored; `data/sources/`, `dossiers/`, `topics/` are the reviewed record.
+
+## 2b. Prepare a clip (P1)
 
 ```bash
 mkdir -p ../data/clips/<id> && cp clip.mp4 ../data/clips/<id>/

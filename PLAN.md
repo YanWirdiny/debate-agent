@@ -211,6 +211,9 @@ second clip. Never cut: moderator exclusion, audience verification gate, event l
 
 ## 7. P1 status (2026-11-14) and what P1 needs from P2
 
+**Update:** P1 finished P2's remaining modules (authorized), see `backend/P2_SYNC1.md` (last section)
+and STATUS.md. The asks below are resolved there.
+
 **P1 done (branch `p1/phase2-3`, 96 tests):** Phase 1 (db.py + Mongo sink, AudioPump, Deepgram
 streaming with reconnect and transcript fallback, segmenter, hubs, event log, `label_clip.py`),
 Phase 2 (SessionContext views, aggregator with dedupe/kill/routing, dispatcher with lane timeouts,

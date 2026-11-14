@@ -3,8 +3,10 @@
 Snapshot of the board in [PLAN.md](PLAN.md) (section 4 phases, section 7 P1 status), checked against
 `origin/main`. On main: PRs #7, #8, #9 (P1 pipeline) and #10 (economy_v2 clip).
 
-**Summary:** P1 is through Phase 3 and runs end to end with `INTEL=fake` (fixture and economy_v2).
-Switching to `INTEL=real` is blocked on P2's lanes and KB, which are still stubs on main.
+**Summary (updated, branch `p1/finish-p2`):** all code is done. P1 finished P2's remaining modules
+(authorized). `INTEL=real` runs end to end on economy_v2 in tests (LLMs mocked). What is left is
+**data and keys**: GROQ/GEMINI/FACTCHECK keys, the reviewed claim banks for harris and trump, topic
+passages, the eval set, clip media. Then: frontend.
 
 ## P1: Pipeline (Yan)
 
@@ -30,11 +32,15 @@ Switching to `INTEL=real` is blocked on P2's lanes and KB, which are still stubs
 |---|---|
 | economy_v2: `clip.json`, `timeline.json`, `transcript.jsonl` | ✅ merged (#10); validated, replays end to end |
 | economy_v2: `clip.mp4`, `audio.wav` | ⬜ gitignored, share via drive |
-| `llm/client.py`, `kb/store.py`, `verify.py` | ❌ stubs (`NotImplementedError`) |
-| `lanes/claims.py`, `lanes/fallacy.py`, `lanes/consistency.py` | ❌ stubs |
-| `intel/async_jobs.py`, `intel/warmup.py` | ❌ stubs |
-| `fetch_factchecks`, `build_dossier`, `build_topics`, `embed_kb`, `run_eval` | ❌ stubs |
-| `data/dossiers/`, `data/topics/`, `data/eval/`, `tests/fixtures/kb_small/` | ❌ empty |
+| `llm/client.py`, `kb/store.py`, `verify.py`, claims bank path | ✅ Wenley (#12) |
+| claims retrieval + stance, U -> slow job; `consistency.py`; `fallacy.py` | ✅ done by P1 (`p1/finish-p2`) |
+| `intel/async_jobs.py` (grounded verdict, prefetch, summarize), `intel/warmup.py` | ✅ done by P1 |
+| prompts: stance, fallacy, nli, grounded_verdict, prefetch, summarize, build_bank | ✅ done by P1 (review wording) |
+| `fetch_factchecks`, `build_dossier`, `build_topics`, `embed_kb`, `run_eval` | ✅ done by P1 |
+| `INTEL=bank` (Groq only) mode | ✅ done by P1 |
+| LLM keys in `.env` (GROQ, GEMINI, GOOGLE_FACTCHECK, LLM_MODEL_*) | ⬜ needed for any real run |
+| `data/dossiers/harris`, `data/dossiers/trump` (reviewed claim banks) | ⬜ run the prep scripts, then HUMAN REVIEW |
+| `data/topics/*` passages, `data/eval/labeled.jsonl` | ⬜ build + review |
 | Answers to P1's asks (PLAN.md section 7) | ⏳ pending |
 
 ## Sync points
@@ -57,7 +63,7 @@ Switching to `INTEL=real` is blocked on P2's lanes and KB, which are still stubs
 
 ## Next
 
-1. P2: share economy_v2 media; land `llm/client.py`, `kb/store.py`, claims lane (bank path) for Sync 1.
-2. P2: review the `PendingMessage` contract PR (`p1/pending-indicator`).
+1. Keys in `.env`, then build + review the KB (RUNBOOK section 2) and one live `INTEL=real` run.
+2. Wenley: review `p1/finish-p2` (prompts wording, stt_safe scope, dedupe guards); share economy_v2 media.
 3. P1: live Deepgram run of economy_v2 with `INTEL=fake`; second clip (El-Sayed vs Rogers, ids
    `el_sayed`, `rogers`) timeline as soon as its video exists (ffmpeg now installed).
