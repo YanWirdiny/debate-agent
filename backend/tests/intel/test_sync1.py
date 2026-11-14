@@ -126,7 +126,7 @@ async def test_claim_emission_and_verification(monkeypatch, kb, seg):
     assert [type(x) for x in emitted] == [ClaimRecord, Annotation]
     record, annotation = emitted
     assert record.annotation_id == annotation.annotation_id == 's:0:claims:0'
-    assert record.claim.embedding == []  # P1 dedupe must not use similarity alone
+    assert record.claim.embedding  # P1 dedupe now also requires equal quantities and negation
     assert annotation.status == 'verified'
     assert verify_annotation(annotation, seg, kb.source_texts())
     assert annotation.model_id == 'test-model' and annotation.prompt_hash == 'hash'
@@ -150,9 +150,14 @@ async def test_moderator_invalid_span_and_unknown(monkeypatch, kb, seg):
         await claims.run_claims(seg, LaneContext(), kb, lambda x: None, asyncio.Queue())
     raw['claims'][0].update(text=seg.text, decontextualized=seg.text)
     emitted = []
-    await claims.run_claims(seg, LaneContext(), KnowledgeBase(encoder=Encoder()), emitted.append, asyncio.Queue())
-    assert len(emitted) == 1 and isinstance(emitted[0], ClaimRecord)
-    assert emitted[0].annotation_id is None
+    queue = asyncio.Queue()
+    await claims.run_claims(seg, LaneContext(), KnowledgeBase(encoder=Encoder()), emitted.append, queue)
+    # No bank hit and no passages: U candidate (operator only) + a slow job for the grounded verdict.
+    assert [type(x) for x in emitted] == [ClaimRecord, Annotation]
+    record, u = emitted
+    assert record.annotation_id == u.annotation_id and u.category == 'U' and u.status == 'candidate' and not u.evidence
+    job = queue.get_nowait()
+    assert job.kind == 'verdict' and job.annotation == u
 
 
 def test_quote_and_stt_guards(kb, seg):
@@ -212,7 +217,7 @@ async def test_deadline_and_cancellation(monkeypatch):
         await task
 
 
-async def test_gemini_schema_path_and_prompt_guards(monkeypatch):
+async def test_gemini_schema_path_and_prompt_guards(monkeypatch, tmp_path):
     mock = AsyncMock(return_value=('{"ok":true}', {'cached_tokens': 5}))
     monkeypatch.setattr(client, '_gemini', mock)
     result = await client.gemini_json('claim_extract', {}, Output, grounded=True, cache_name='cache')
@@ -220,8 +225,11 @@ async def test_gemini_schema_path_and_prompt_guards(monkeypatch):
     assert mock.call_args.args[-2:] == (True, 'cache')
     with pytest.raises(ValueError):
         await client.groq_json('../secret', {}, Output)
+    placeholder = tmp_path / 'stub.md'
+    placeholder.write_text('# stub\n\nPhase 0 placeholder.\n')
+    monkeypatch.setattr(client, 'PROMPTS', tmp_path)
     with pytest.raises(client.LLMError, match='not implemented'):
-        await client.groq_json('stance', {}, Output)
+        await client.groq_json('stub', {}, Output)
 
 
 def test_unreviewed_and_conflicting_records_are_not_verdicts(kb):

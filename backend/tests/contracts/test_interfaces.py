@@ -19,6 +19,10 @@ IMPLEMENTED = {
     # P2 Sync 1 (behavior covered by tests/intel/test_sync1.py)
     "app.lanes.claims.run_claims", "app.llm.client.groq_json",
     "app.llm.client.gemini_json", "app.kb.store.KnowledgeBase",
+    # P2 Sync 2-3 (behavior covered by tests/intel/test_lanes_async.py)
+    "app.lanes.fallacy.run_fallacy", "app.lanes.consistency.run_consistency",
+    "app.intel.async_jobs.grounded_verdict", "app.intel.async_jobs.prefetch", "app.intel.async_jobs.summarize",
+    "app.intel.warmup.warm_up",
     "app.lanes.fake.run_claims", "app.lanes.fake.run_fallacy", "app.lanes.fake.run_consistency",
     # P1 Phase 1
     "app.ingest.AudioPump", "app.ingest.TimelineLookup", "app.segmenter.Segmenter", "app.aggregator.Aggregator", "app.eventlog.EventWriter",

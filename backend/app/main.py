@@ -7,7 +7,7 @@ Audience is receive-only. One live session per process (state is in memory).
 Startup reads Settings (backend/.env):
 - source: REPLAY_EVENTS=<session_id> replays a recorded run; REPLAY_TRANSCRIPT=1 plays the
   pre-made transcript; otherwise clip audio streams to Deepgram.
-- INTEL=fake|real: fake lanes and async plane, or P2's real ones.
+- INTEL=fake|real|bank: fake lanes; P2's real intel; or bank-only (Groq only, no fallacy/Gemini).
 MongoDB holds the event log and session records. Every event is also archived locally in
 data/runs/<session_id>/log.jsonl, so reports and REPLAY_EVENTS work with the network off.
 
