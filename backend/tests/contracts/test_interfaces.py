@@ -16,6 +16,9 @@ CLASSES = {"app.ingest": ["AudioPump", "TimelineLookup"], "app.segmenter": ["Seg
 # Implemented on purpose: signatures are still checked, the "stub raises" check is skipped.
 # Entries are functions ("module.func") or whole classes ("module.Class").
 IMPLEMENTED = {
+    # P2 Sync 1 (behavior covered by tests/intel/test_sync1.py)
+    "app.lanes.claims.run_claims", "app.llm.client.groq_json",
+    "app.llm.client.gemini_json", "app.kb.store.KnowledgeBase",
     "app.lanes.fake.run_claims", "app.lanes.fake.run_fallacy", "app.lanes.fake.run_consistency",
     # P1 Phase 1
     "app.ingest.AudioPump", "app.ingest.TimelineLookup", "app.segmenter.Segmenter", "app.aggregator.Aggregator", "app.eventlog.EventWriter",
