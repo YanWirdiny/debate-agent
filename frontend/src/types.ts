@@ -104,6 +104,22 @@ export interface BannerMessage {
   text: string;
 }
 
+export interface PartialWord {
+  text: string;
+  t_start: number;
+  t_end: number;
+}
+
+/** Both views: the sentence being spoken, before it is final. The SegmentMessage with the same
+ *  segment_id replaces it. Not logged. */
+export interface PartialMessage {
+  type: "partial";
+  segment_id: string;
+  speaker_id: string;
+  role: Role;
+  words: PartialWord[];
+}
+
 /** Operator only: a lane did not check this segment. Final (no late result follows). */
 export interface PendingMessage {
   type: "pending";
@@ -121,7 +137,8 @@ export type ServerMessage =
   | StartedMessage
   | RemovalMessage
   | BannerMessage
-  | PendingMessage;
+  | PendingMessage
+  | PartialMessage;
 
 export interface LoadMessage {
   type: "load";

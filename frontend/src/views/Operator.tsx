@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { categoryLabel, fmtTime, isStruck, speakerName } from "../categories";
-import { useClipTime, useVideoSync } from "../clock";
+import { audienceDelay, useClipTime, useVideoSync } from "../clock";
 import { AnnotatedText } from "../components/AnnotatedText";
 import { Banners } from "../components/Banners";
 import { FlagChip } from "../components/FlagChip";
 import { LatencyMeter } from "../components/LatencyMeter";
 import { annotationsBySegment, type PendingMark, useView } from "../store";
-import type { Annotation, Segment } from "../types";
+import type { Annotation, PartialMessage, Segment } from "../types";
 import { type ClipInfo, fetchClips, fetchState, type ServerState, useViewSocket } from "../ws";
 
 type Phase = "idle" | "loading" | "ready" | "starting" | "live";
@@ -22,9 +22,11 @@ export function Operator() {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const [videoOk, setVideoOk] = useState(true);
-  const { segments, annotations, pending, metrics, sessionId, conn, t0Wall } = useView();
+  const { segments, annotations, pending, metrics, sessionId, conn, t0Wall, partial } = useView();
   const setSession = useView((s) => s.setSession);
   const clipTime = useClipTime(500);
+  const delay = useMemo(() => audienceDelay(), []);
+  const onAir = useClipTime(500, delay); // where the audience is (broadcast delay)
 
   const sock = useViewSocket("operator", (m) => {
     if (m.type === "ready") {
@@ -54,7 +56,7 @@ export function Operator() {
     if (server) setSession({ clipId: server.clip_id, speed: server.speed });
   }, [server, setSession]);
   useEffect(() => setVideoOk(true), [server?.clip_id]);
-  useVideoSync(video, videoOk);
+  useVideoSync(video, videoOk, delay); // preview = what the audience sees
 
   const bySegment = useMemo(() => annotationsBySegment(annotations), [annotations]);
   const pendingCount = useMemo(() => Object.values(pending).reduce((n, p) => n + p.length, 0), [pending]);
@@ -138,7 +140,7 @@ export function Operator() {
               <input type="checkbox" checked={flaggedOnly} onChange={(e) => setFlaggedOnly(e.target.checked)} /> flagged only
             </label>
           </div>
-          <Transcript segments={shown} bySegment={bySegment} pending={pending} onKill={kill} live={phase === "live"} />
+          <Transcript segments={shown} bySegment={bySegment} pending={pending} onKill={kill} live={phase === "live"} onAir={onAir} partial={partial} />
         </section>
         <aside className="border-t border-zinc-800 p-4 lg:w-96 lg:border-t-0 lg:border-l">
           <div className="overflow-hidden rounded-lg bg-black">
@@ -148,7 +150,10 @@ export function Operator() {
               <p className="aspect-video p-6 text-sm text-zinc-500">{server?.clip_id ? "No video for this clip." : "Load a clip."}</p>
             )}
           </div>
-          <p className="mt-2 text-xs text-zinc-500">Preview is muted and follows the server clock{t0Wall ? "" : " once started"}.</p>
+          <p className="mt-2 text-xs text-zinc-500">
+            Preview = audience picture, {delay} s behind live{t0Wall ? "" : " once started"} (muted). Flags on lines marked
+            “not on air” can be killed before the audience sees them.
+          </p>
           <Legend />
         </aside>
       </div>
@@ -156,19 +161,21 @@ export function Operator() {
   );
 }
 
-function Transcript({ segments, bySegment, pending, onKill, live }: {
+function Transcript({ segments, bySegment, pending, onKill, live, onAir, partial }: {
   segments: Segment[];
   bySegment: Record<string, Annotation[]>;
   pending: Record<string, PendingMark[]>;
   onKill: (a: Annotation) => void;
   live: boolean;
+  onAir: number | null;
+  partial: PartialMessage | null;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   useEffect(() => {
     if (stick.current) end.current?.scrollIntoView({ block: "end" });
-  }, [segments.length]);
+  }, [segments.length, partial?.words.length]);
   return (
     <div
       ref={box}
@@ -187,7 +194,14 @@ function Transcript({ segments, bySegment, pending, onKill, live }: {
           return (
             <li key={s.segment_id} className={`rounded-lg px-3 py-2 ${anns.length ? "bg-zinc-900" : ""}`}>
               <div className="flex gap-3">
-                <span className="w-12 shrink-0 pt-0.5 text-xs text-zinc-500 tabular-nums">{fmtTime(s.t_start)}</span>
+                <span className="w-12 shrink-0 pt-0.5 text-xs text-zinc-500 tabular-nums">
+                  {fmtTime(s.t_start)}
+                  {onAir != null && onAir < s.t_end && (
+                    <span className="mt-1 block rounded bg-sky-950 px-1 text-[10px] leading-4 text-sky-300" title="The audience has not heard this line yet">
+                      not on air
+                    </span>
+                  )}
+                </span>
                 <p className={`min-w-0 flex-1 leading-relaxed ${mod ? "text-zinc-500" : ""}`}>
                   <span className={`mr-1.5 font-semibold ${mod ? "text-zinc-500" : "text-amber-200"}`}>{speakerName(s.speaker_id)}</span>
                   {mod ? s.text : <AnnotatedText text={s.text} annotations={anns} chipSize="sm" />}
@@ -218,6 +232,16 @@ function Transcript({ segments, bySegment, pending, onKill, live }: {
           );
         })}
       </ol>
+      {partial && !segments.some((s) => s.segment_id === partial.segment_id) && (
+        <p className="mt-2 flex gap-3 px-3 text-zinc-400 italic" aria-live="off">
+          <span className="w-12 shrink-0 pt-0.5 text-xs not-italic tabular-nums">{fmtTime(partial.words[0]?.t_start)}</span>
+          <span>
+            <span className="mr-1.5 font-semibold not-italic">{speakerName(partial.speaker_id)}</span>
+            {partial.words.map((w) => w.text).join(" ")}
+            <span className="ml-1 inline-block h-[0.9em] w-[2px] translate-y-[2px] animate-pulse bg-current" aria-hidden />
+          </span>
+        </p>
+      )}
       <div ref={end} />
     </div>
   );

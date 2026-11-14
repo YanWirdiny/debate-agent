@@ -33,6 +33,9 @@ SAMPLES = {
     "StartMessage": dict(clip_id="clip"), "KillMessage": dict(annotation_id=ANN["annotation_id"]),
     "LoadMessage": dict(clip_id="clip"), "BannerMessage": dict(level="warn", text="Deepgram reconnecting"),
     "PendingMessage": dict(segment_id="fixture:1", lane="claims", reason="timeout"),
+    "PartialWord": dict(text="Prices", t_start=1.0, t_end=1.3),
+    "PartialMessage": dict(segment_id="fixture:2", speaker_id="speaker_a", role="speaker",
+                           words=[dict(text="Prices", t_start=1.0, t_end=1.3)]),
 }
 MODELS = {name: cls for name, cls in vars(m).items() if inspect.isclass(cls) and issubclass(cls, BaseModel) and cls.__module__ == m.__name__ and cls is not m.ContractModel}
 
@@ -44,7 +47,7 @@ def test_json_roundtrip(name):
     obj = MODELS[name].model_validate(SAMPLES[name])
     assert MODELS[name].model_validate_json(obj.model_dump_json()) == obj
 
-@pytest.mark.parametrize("alias,names", [(m.SlowJob, ["VerdictJob", "PrefetchJob"]), (m.ClientMessage, ["LoadMessage", "StartMessage", "KillMessage"]), (m.ServerMessage, ["SegmentMessage", "AnnotationMessage", "AnnotationUpdateMessage", "MetricsMessage", "ReadyMessage", "StartedMessage", "RemovalMessage", "BannerMessage", "PendingMessage"])])
+@pytest.mark.parametrize("alias,names", [(m.SlowJob, ["VerdictJob", "PrefetchJob"]), (m.ClientMessage, ["LoadMessage", "StartMessage", "KillMessage"]), (m.ServerMessage, ["SegmentMessage", "AnnotationMessage", "AnnotationUpdateMessage", "MetricsMessage", "ReadyMessage", "StartedMessage", "RemovalMessage", "BannerMessage", "PendingMessage", "PartialMessage"])])
 def test_discriminated_unions(alias, names):
     adapter = TypeAdapter(alias)
     for name in names:

@@ -66,6 +66,10 @@ cd ../frontend && npm install && npm run dev   # UI on http://localhost:5173 (pr
 UI: `/operator` (pick clip -> Load -> wait for warm-up -> Start; Kill on any flag), `/audience` (open on
 the projector; click once to enable sound; video and captions follow the operator), `/reports/<session_id>`.
 The audience browser plays `data/clips/<id>/clip.mp4` itself, synced to the server clock (drift > 300 ms -> seek).
+Broadcast delay: the audience picture runs 2.5 s behind the live pipeline (`/audience?delay=3` to change it,
+`?delay=0` for none). Captions appear word by word as they are spoken (server `partial` messages with
+real word timings) and flags appear as their phrase ends, never ahead of the video. The operator is live:
+lines marked "not on air" have not reached the audience yet, so a kill there is never seen.
 
 Operator WebSocket `/ws/operator`: send `{"type":"load","clip_id":"<id>"}` -> `ready` (warm-up done),
 then `{"type":"start","clip_id":"<id>"}` -> `started` with `t0_wall` (frontend calls `video.play()`).

@@ -4,6 +4,8 @@ import type {
   BannerMessage,
   Lane,
   MetricsSnapshot,
+  PartialMessage,
+  PartialWord,
   PendingMessage,
   RemovalStatus,
   Segment,
@@ -29,6 +31,10 @@ export interface ViewState {
   t0Wall: number | null;
   speed: number;
   segments: Segment[];
+  /** The sentence being spoken right now (not final yet). */
+  partial: PartialMessage | null;
+  /** segment_id -> real word timings (from partials), to reveal final lines at speaking pace. */
+  wordTimes: Record<string, PartialWord[]>;
   annotations: Record<string, Annotation>;
   /** annotation_id -> removal status (audience: the flag stopped being public). */
   removed: Record<string, RemovalStatus>;
@@ -45,6 +51,8 @@ export interface ViewState {
 
 const empty = {
   segments: [] as Segment[],
+  partial: null as PartialMessage | null,
+  wordTimes: {} as Record<string, PartialWord[]>,
   annotations: {} as Record<string, Annotation>,
   removed: {} as Record<string, RemovalStatus>,
   pending: {} as Record<string, PendingMark[]>,
@@ -80,7 +88,12 @@ export const useView = create<ViewState>((set) => ({
             // First message of a session this view did not see `ready` for (joined late / reload).
             return { ...empty, sessionId: m.data.session_id, segments: [m.data] };
           }
-          return { sessionId: st.sessionId ?? m.data.session_id, segments: [...st.segments, m.data] };
+          const partial = st.partial?.segment_id === m.data.segment_id ? null : st.partial;
+          return { sessionId: st.sessionId ?? m.data.session_id, segments: [...st.segments, m.data], partial };
+        }
+        case "partial": {
+          if (st.segments.some((s) => s.segment_id === m.segment_id)) return {}; // already final
+          return { partial: m, wordTimes: { ...st.wordTimes, [m.segment_id]: m.words } };
         }
         case "annotation":
         case "annotation_update": {

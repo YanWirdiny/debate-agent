@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useVideoSync } from "../clock";
-import { CAPTION_LINES, CaptionBar } from "../components/CaptionBar";
+import { audienceDelay, useDisplayTime, useVideoSync } from "../clock";
+import { buildLines, CAPTION_LINES, CaptionBar, reachedLines, revealedChars } from "../components/CaptionBar";
 import { SideRail } from "../components/SideRail";
 import { annotationsBySegment, useView } from "../store";
 import { fetchState, useViewSocket } from "../ws";
 import type { Segment } from "../types";
 
-/** Audience: video full width, two caption lines with flagged spans, side rail for late verdicts.
- *  Receives only public flags (the server applies the verification gate). */
+/** Audience: video full width, two caption lines revealed at the speaker's pace with flagged spans,
+ *  side rail for older flags. Receives only public flags (the server applies the verification gate).
+ *  Plays `audienceDelay()` seconds behind the live pipeline so captions and flags are never ahead of
+ *  the picture and analysis latency is hidden (broadcast delay). */
 export function Audience() {
   const setSession = useView((s) => s.setSession);
   const clipId = useView((s) => s.clipId);
   const segments = useView((s) => s.segments);
+  const partial = useView((s) => s.partial);
+  const wordTimes = useView((s) => s.wordTimes);
   const annotations = useView((s) => s.annotations);
   const removed = useView((s) => s.removed);
   const conn = useView((s) => s.conn);
@@ -30,16 +34,28 @@ export function Audience() {
     void refresh.current();
   }, []);
   useEffect(() => setVideoOk(true), [clipId]);
-  useVideoSync(video, joined && videoOk);
+  const delay = useMemo(() => audienceDelay(), []);
+  useVideoSync(video, joined && videoOk, delay);
+  const displayTime = useDisplayTime(joined && videoOk ? video : null, delay);
 
   const bySegment = useMemo(() => annotationsBySegment(annotations), [annotations]);
   const segIndex = useMemo(() => Object.fromEntries(segments.map((s) => [s.segment_id, s])) as Record<string, Segment>, [segments]);
+  // Only what the viewer has already heard: segments reached by the video, flags whose span was spoken.
+  const lines = useMemo(() => buildLines(segments, partial, wordTimes), [segments, partial, wordTimes]);
+  const reached = reachedLines(lines, displayTime);
+  const reachedKey = reached.length ? reached[reached.length - 1].segment_id : "";
   const railFlags = useMemo(() => {
-    const inBar = new Set(segments.slice(-CAPTION_LINES).map((s) => s.segment_id));
+    const inBar = new Set(reached.slice(-CAPTION_LINES).map((l) => l.segment_id));
+    const finalLine = Object.fromEntries(lines.filter((l) => l.final).map((l) => [l.segment_id, l]));
     return Object.values(annotations)
-      .filter((a) => !inBar.has(a.segment_id))
+      .filter((a) => {
+        const l = finalLine[a.segment_id];
+        return l && !inBar.has(a.segment_id) && displayTime != null && revealedChars(l, displayTime) >= a.span_char_end;
+      })
       .sort((a, b) => (segIndex[b.segment_id]?.t_start ?? 0) - (segIndex[a.segment_id]?.t_start ?? 0));
-  }, [annotations, segIndex, segments]);
+    // displayTime only matters for the bar boundary, captured by reachedKey
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotations, segIndex, reachedKey]);
 
   return (
     <div className="flex min-h-screen flex-col gap-4 bg-black p-4 text-white lg:h-screen lg:flex-row">
@@ -70,7 +86,7 @@ export function Audience() {
           )}
           {conn !== "open" && <span className="absolute top-3 right-3 rounded bg-amber-600 px-2 py-1 text-xs font-semibold">Reconnecting…</span>}
         </div>
-        <CaptionBar segments={segments} bySegment={bySegment} removed={removed} />
+        <CaptionBar lines={lines} bySegment={bySegment} removed={removed} displayTime={displayTime} />
         <Legend />
       </main>
       <div className="h-72 shrink-0 lg:h-auto lg:w-80">

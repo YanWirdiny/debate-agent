@@ -536,6 +536,9 @@ class SessionRunner:
     async def on_words(self, words: list[Word]) -> None:
         for seg in self.segmenter.on_final(words):
             await self.on_segment(seg)
+        partial = self.segmenter.partial()
+        if partial is not None:  # live captions at speaking pace; not logged, not analysed
+            await asyncio.gather(self.operator.broadcast(partial), self.audience.broadcast(partial))
 
     async def on_segment(self, seg: Segment) -> None:
         self.ctx.on_segment(seg)

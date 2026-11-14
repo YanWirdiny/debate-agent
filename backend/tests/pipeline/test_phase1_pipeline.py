@@ -213,5 +213,23 @@ def test_websocket_load_start_and_bad_message():
         assert ws.receive_json()["type"] == "ready"
         ws.send_text('{"type": "start", "clip_id": "fixture"}')
         assert ws.receive_json()["type"] == "started"
-        seen = {ws.receive_json()["type"] for _ in range(6)}
-        assert "segment" in seen
+        seen = []
+        while "segment" not in seen and len(seen) < 200:
+            seen.append(ws.receive_json()["type"])
+        assert "segment" in seen and "partial" in seen  # live words arrive before the final sentence
+
+
+def test_segmenter_partial_carries_the_next_segment_id_and_word_times():
+    from app.models import Word
+    from app.segmenter import Segmenter
+
+    sg = Segmenter("s")
+    w = lambda t, a, spk="a": Word(text=t, t_start=a, t_end=a + 0.3, confidence=0.99, speaker_id=spk, role="speaker")
+    assert sg.partial() is None
+    assert sg.on_final([w("Prices", 1.0), w("rose", 1.4)]) == []
+    p = sg.partial()
+    assert p.segment_id == "s:0" and [x.text for x in p.words] == ["Prices", "rose"] and p.words[1].t_start == 1.4
+    [seg] = sg.on_final([w("fast.", 1.8), w("Next", 2.4)])
+    assert seg.segment_id == "s:0" and seg.text == "Prices rose fast."  # final replaces the partial (same id)
+    p = sg.partial()
+    assert p.segment_id == "s:1" and [x.text for x in p.words] == ["Next"]
