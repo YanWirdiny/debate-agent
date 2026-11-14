@@ -1,8 +1,8 @@
 # ARCHITECTURE.md: BS Subtitles
 
-> Companion to `context.md` (rules, categories, data contracts, stack). This file defines HOW the
+> Companion to `CONTEXT.md` (rules, categories, data contracts, stack). This file defines HOW the
 > system runs: processes, tasks, queues, timing, interfaces, prompts, failures, deployment.
-> If the two files disagree, `context.md` wins on rules; this file wins on structure.
+> If the two files disagree, `CONTEXT.md` wins on rules; this file wins on structure.
 
 ## 1. System overview
 
@@ -133,7 +133,7 @@ class SessionContext:
     def view_for(self, seg: Segment, lane: str) -> LaneContext: ...
 ```
 
-`view_for` returns ONLY what that lane's prompt needs (budgets in context.md section 8.3):
+`view_for` returns ONLY what that lane's prompt needs (see table below):
 
 | Lane | Fields in the view |
 |---|---|
@@ -251,7 +251,7 @@ Mapping `stance.verdict` -> category: supported -> V, contradicted -> F, mislead
 data_misuse -> D, insufficient -> U.
 
 The `fallacy` prompt must include, per type: definition, logical form, one positive and one negative
-example, and the legal exceptions from context.md section 3. Instruct: "If unsure, has_fallacy=false."
+example, and the legal exceptions from CONTEXT.md section 3. Instruct: "If unsure, has_fallacy=false."
 
 ## 8. Prefetch and warm-up
 
@@ -322,7 +322,7 @@ Clock: frontend sends `start`; server replies `{t0_wall}` and starts the pump; f
 | 6 Clips | `label_clip.py` | clip -> Deepgram prerecorded + diarize -> timeline draft -> hand fix -> Mongo | P2 |
 | 7 Eval | `run_eval.py` | `eval/labeled.jsonl` -> precision/recall per category -> Mongo + report | P1 |
 
-## 13. Build order (maps to context.md section 11)
+## 13. Build order (maps to CONTEXT.md section 11)
 
 1. Contracts first: `models.py`, `types.ts`, WS message types, `mock_stream.py` emitting fake segments and
    annotations through the real hub. Frontend builds against this immediately.

@@ -1,6 +1,8 @@
-# context.md: BS Subtitles (BS Debate Checker)
+# CONTEXT.md: BS Subtitles (BS Debate Checker)
 
-> Single source of truth for this hackathon build. Read fully before writing code.
+> Single source of truth for rules, categories, data contracts and stack. Read fully before writing code.
+> Companion: `ARCHITECTURE.md` (processes, queues, prompts, failures, deployment). On structure
+> (storage, providers, task layout) ARCHITECTURE.md wins; on rules this file wins.
 > Team: 2 people. Time: ~25h. Research doc: "BS Debate Checker: Pre-Architecture Research".
 
 ## 1. What we are building
@@ -90,7 +92,10 @@ flowchart LR
     CTX --> LA & LB
     KB --> LA & LD
     LA & LB & LD --> AGG[Aggregator: merge, threshold, version]
-    AGG --> LOG[(Event log SQLite, hash chain)]
+    LA -- U claims --> GW[Async worker: Gemini grounded verdict]
+    CTX -- prefetch --> GW
+    GW -- annotation updates --> AGG
+    AGG --> LOG[(Event log MongoDB, hash chain)]
     AGG -- WebSocket --> AUD[Audience view: captions]
     AGG -- WebSocket --> OP[Operator view: all flags, kill]
     LOG --> REP[Report page]
@@ -124,7 +129,9 @@ Lane C (deterministic number checks) is folded into Lane A's stance prompt for t
    Match -> verdict from bank, no LLM call.
 3. No match: top-5 passages from active-topic shard, then all shards. One LLM stance call returns
    verdict + category + evidence span copied verbatim from a passage.
-4. No usable passage: category U (operator only). Stretch: async web search, update the annotation later.
+4. No usable passage: category U (operator only). The claim also goes to the async worker, which runs a
+   Gemini grounded (Google Search) verdict off the hot path and updates the annotation later
+   (timeout 20 s; on timeout it stays U, operator only).
 5. Guard: if any number/negation word in the claim has STT confidence < 0.85, max status = candidate.
 
 ### 5.4 Lane B: Fallacy
@@ -145,8 +152,10 @@ Lane C (deterministic number checks) is folded into Lane A's stance prompt for t
 - Routes: operator gets everything; audience gets only rule 3 in section 2.
 
 ### 5.7 Event log
-SQLite table `events(seq INTEGER PK, session_id, ts, type, payload_json, prev_hash, hash)`,
-`hash = sha256(prev_hash + payload_json)`. Types: session_start, segment, annotation, annotation_update,
+MongoDB collection `events` with documents `{session_id, seq, ts, type, payload_json, prev_hash, hash}`,
+unique index on `(session_id, seq)`, `hash = sha256(prev_hash + payload_json)`. A single writer task per
+session assigns `seq` and batches inserts; if Mongo is unreachable it buffers in memory and appends to a
+local `events.jsonl`, flushed later. Types: session_start, segment, annotation, annotation_update,
 kill, session_end. Report and replay read only from here.
 
 ### 5.8 Report
@@ -225,6 +234,9 @@ data/
     labeled.jsonl      # 50 to 100 hand-labeled sentences: {text, speaker_id, expected_category|null}
 ```
 
+These files are the reviewed source of truth in git. `embed_kb.py` loads them (with embeddings) into
+MongoDB; at session warm-up the backend loads them from Mongo into in-memory numpy indexes.
+
 Topic shards to build: economy_inflation, immigration, health_care, energy_gas, foreign_policy_war,
 crime, social_security, abortion (cover what the chosen clips actually discuss first).
 
@@ -235,13 +247,19 @@ Build with an LLM-assisted script, then HUMAN REVIEW every row before the demo. 
 ## 8. Stack
 
 - Backend: Python 3.12, FastAPI, uvicorn, pydantic v2, httpx, deepgram-sdk, sentence-transformers,
-  numpy (in-memory cosine, no vector DB needed at this size), sqlite3.
-- LLM: Groq via OpenAI-compatible client, JSON mode, temperature 0. Fallback provider Cerebras behind
-  the same `llm/client.py` interface. Pick current model ids from each console at build time and pin them
-  in `.env`; hot path uses a fast open-weight model, never a reasoning model.
+  numpy (in-memory cosine, no vector DB needed at this size), motor (async MongoDB driver), google-genai.
+- Database: MongoDB. Dev uses a shared MongoDB Atlas (free tier); the demo uses a local MongoDB (Docker)
+  restored from Atlas. Holds the knowledge base, clip timelines, the event log, and eval results.
+- LLM, hot path: Groq via OpenAI-compatible client, JSON mode, temperature 0. On 429/timeout: retry once,
+  then fall back to a Gemini Flash-class model behind the same `llm/client.py` interface.
+- LLM, off the hot path: Gemini for grounded verdicts (Google Search), per-question prefetch, the rolling
+  summarizer, and prep-plane extraction (`build_dossier.py`). Never called from a lane.
+- Pick current model ids from each console at build time and pin them in `.env`; the hot path uses a fast
+  open-weight model, never a reasoning model.
 - Frontend: Vite + React + TypeScript + Tailwind. Views: `/audience`, `/operator`, `/report/:id`.
-- Env: `DEEPGRAM_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GOOGLE_FACTCHECK_KEY`,
-  `LLM_MODEL_FAST`, `LLM_PROVIDER`, `REPLAY_TRANSCRIPT`, `AUDIENCE_MIN_CONF=0.80`.
+- Env: `DEEPGRAM_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_FACTCHECK_KEY`,
+  `MONGODB_URI`, `MONGODB_DB`, `LLM_MODEL_FAST`, `LLM_MODEL_GEMINI`, `LLM_MODEL_GEMINI_FALLBACK`,
+  `LLM_PROVIDER`, `REPLAY_TRANSCRIPT`, `REPLAY_EVENTS`, `AUDIENCE_MIN_CONF=0.80`.
 
 ## 9. Repo structure
 
@@ -259,10 +277,14 @@ backend/app/
   eventlog.py
   kb/store.py           # load dossiers + shards, embed, search
   llm/client.py         # provider switch, timeouts, JSON validation, retry once
-  llm/prompts/*.md      # claim_extract.md, stance.md, fallacy.md, nli.md (hash each at load)
+  llm/prompts/*.md      # hash each at load; see ARCHITECTURE.md section 7 for schemas
+                        #   hot path (Groq):  claim_extract.md, stance.md, fallacy.md, nli.md
+                        #   async (Gemini):   grounded_verdict.md, prefetch.md, summarize.md
+                        #   prep (Gemini):    build_bank.md
+  db.py                 # MongoDB client (motor), collections, indexes
   report.py
 backend/scripts/
-  build_dossier.py  label_clip.py  embed_kb.py  run_eval.py  mock_stream.py
+  fetch_factchecks.py  build_dossier.py  build_topics.py  label_clip.py  embed_kb.py  run_eval.py  mock_stream.py
 frontend/src/
   types.ts  ws.ts  views/Audience.tsx  views/Operator.tsx  views/Report.tsx
   components/CaptionBar.tsx  FlagChip.tsx  SideRail.tsx  EvidencePopover.tsx  LatencyMeter.tsx
