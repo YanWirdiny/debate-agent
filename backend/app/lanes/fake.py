@@ -3,6 +3,7 @@
 - run_claims: flags the first number in a sentence as V (verified, public).
 - run_fallacy: flags "every"/"never"/"always"/"either" as an L candidate (operator only).
 - run_consistency: never flags.
+- Moderator segments (role == "moderator") are never flagged.
 """
 
 from __future__ import annotations
@@ -38,6 +39,8 @@ def _annotation(seg: Segment, m: re.Match[str], **kw) -> Annotation:
 
 
 async def run_claims(seg: Segment, view: LaneContext, kb: KnowledgeBase, emit: Emit, slow_q: asyncio.Queue[SlowJob]) -> None:
+    if seg.role == "moderator":
+        return
     await asyncio.sleep(0.2)
     m = _NUMBER.search(seg.text)
     if not m:
@@ -70,6 +73,8 @@ async def run_claims(seg: Segment, view: LaneContext, kb: KnowledgeBase, emit: E
 
 
 async def run_fallacy(seg: Segment, view: LaneContext, emit: Emit) -> None:
+    if seg.role == "moderator":
+        return
     await asyncio.sleep(0.3)
     m = _ABSOLUTE.search(seg.text)
     if not m:
