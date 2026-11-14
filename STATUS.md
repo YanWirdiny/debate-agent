@@ -20,7 +20,7 @@ Switching to `INTEL=real` is blocked on P2's lanes and KB, which are still stubs
 | 3 | Warm-up, 2 async verdict workers, prefetch, summarizer | ✅ done (against fake lanes) |
 | 3 | `REPLAY_TRANSCRIPT`, `REPLAY_EVENTS`, report JSON + HTML | ✅ done |
 | 3 | Record one good run per clip | ⬜ blocked: needs real lanes + clip media |
-| - | Operator "pending" indicator | ⬜ needs a `contract:` PR (proposal in PLAN.md section 7) |
+| - | Operator "pending" indicator | 🟡 built + tested on `p1/pending-indicator`; contract PR awaits P2 approval |
 | - | `check_setup.py`, `RUNBOOK.md` | ✅ done |
 | 4 (demo prep) | Local Docker Mongo for demo day | ⏸ optional, decide before the demo |
 
@@ -58,5 +58,6 @@ Switching to `INTEL=real` is blocked on P2's lanes and KB, which are still stubs
 ## Next
 
 1. P2: share economy_v2 media; land `llm/client.py`, `kb/store.py`, claims lane (bank path) for Sync 1.
-2. P1: live Deepgram run of economy_v2 with `INTEL=fake`; agree the `pending` message and open the
-   contract PR; second clip timeline when its video exists.
+2. P2: review the `PendingMessage` contract PR (`p1/pending-indicator`).
+3. P1: live Deepgram run of economy_v2 with `INTEL=fake`; second clip (El-Sayed vs Rogers, ids
+   `el_sayed`, `rogers`) timeline as soon as its video exists (ffmpeg now installed).

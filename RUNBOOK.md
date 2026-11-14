@@ -48,6 +48,8 @@ python scripts/mock_stream.py --speed 4   # no server: print what operator/audie
 Operator WebSocket `/ws/operator`: send `{"type":"load","clip_id":"<id>"}` -> `ready` (warm-up done),
 then `{"type":"start","clip_id":"<id>"}` -> `started` with `t0_wall` (frontend calls `video.play()`).
 `{"type":"kill","annotation_id":"..."}` removes a flag everywhere. Audience: `/ws/audience` (receive only).
+Operator only: `{"type":"pending","segment_id","lane","reason":"timeout"|"error"}` = that lane did not check
+that sentence (final, no late result). Show it as a grey "not checked" marker; the report counts them.
 HTTP: `/health`, `/clips`, `/sessions`, `/report/<session_id>` (JSON), `/report/<session_id>.html` (print to PDF).
 
 Every run is logged to Mongo and archived locally in `data/runs/<session_id>/log.jsonl` (gitignored).

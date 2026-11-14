@@ -219,7 +219,7 @@ summarizer, `REPLAY_TRANSCRIPT`, `REPLAY_EVENTS`, report JSON + HTML, `/sessions
 `scripts/check_setup.py` and `RUNBOOK.md`.
 
 **P1 left:** label real clips + record one good run per clip (needs clips and keys); the second
-clip timeline; operator "pending" indicator (needs a contract message, see below).
+clip timeline. Operator "pending" indicator: done on branch `p1/pending-indicator`, contract PR needs P2's approval.
 
 **What the pipeline expects from P2 (please confirm or push back):**
 - `INTEL=real` switches the runner to `lanes.claims.run_claims`, `lanes.fallacy.run_fallacy`,
@@ -236,5 +236,7 @@ clip timeline; operator "pending" indicator (needs a contract message, see below
   `{"per_category": {"F": {"precision": .., "recall": .., "n": ..}, ...}}`.
 - Metrics has `add_cache_tokens(n)`; P1 has no path to `LLMResult.usage` yet. Proposal: P2's client
   exposes a module-level counter P1 reads, or we skip cache tokens on the dashboard.
-- Proposed contract (not done): `{"type": "pending", "segment_id", "lane"}` server message so the
-  operator view can show a timed-out lane (CONTEXT.md rule 7).
+- Contract `PendingMessage` (branch `p1/pending-indicator`, needs P2 approval):
+  `{"type": "pending", "segment_id", "lane", "reason": "timeout" | "error"}`, operator only, final,
+  plus a `"pending"` event type. For P2: a lane that cannot produce a valid result should **raise**
+  (after its one retry), not return silently, so the operator sees `reason: "error"`.
