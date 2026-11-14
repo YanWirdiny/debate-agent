@@ -1,5 +1,6 @@
 from pathlib import Path
 import pytest
+import app.config as app_config
 from app.config import ENV_FILE, MissingRuntimeConfig, Settings
 
 REQUIRED_KEYS = [
@@ -35,19 +36,22 @@ def _clear_runtime_env(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 def test_env_file_is_backend_dotenv_not_cwd(tmp_path, monkeypatch):
-    assert ENV_FILE == Path(__file__).resolve().parents[2] / ".env"
+    package_dir = Path(app_config.__file__).resolve().parent
+    assert ENV_FILE == package_dir.parent / ".env"
     assert ENV_FILE.is_absolute()
     assert Path(Settings.model_config["env_file"]) == ENV_FILE
-    if ENV_FILE.exists():
-        pytest.skip("backend/.env already present")
+    real_before = ENV_FILE.read_bytes() if ENV_FILE.exists() else None
+    package_env = tmp_path / "package.env"
+    package_env.write_text("GROQ_API_KEY=from-backend-file\nREPLAY_TRANSCRIPT=1\n")
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / ".env").write_text("GROQ_API_KEY=from-cwd\nREPLAY_TRANSCRIPT=0\n")
     _clear_runtime_env(monkeypatch)
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / ".env").write_text("GROQ_API_KEY=from-cwd\nREPLAY_TRANSCRIPT=0\n")
-    ENV_FILE.write_text("GROQ_API_KEY=from-backend-file\nREPLAY_TRANSCRIPT=1\n")
-    try:
-        settings = Settings()
-    finally:
-        ENV_FILE.unlink(missing_ok=True)
+    monkeypatch.chdir(work)
+    monkeypatch.setitem(Settings.model_config, "env_file", package_env)
+    settings = Settings()
+    real_after = ENV_FILE.read_bytes() if ENV_FILE.exists() else None
+    assert real_before == real_after
     assert settings.groq_api_key.get_secret_value() == "from-backend-file"
     assert settings.replay_transcript is True
 
