@@ -1,11 +1,20 @@
 """Sync 1 claims: extraction and reviewed bank matches only. No retrieval verdicts."""
 from __future__ import annotations
 import asyncio
+import logging
 from pydantic import Field, model_validator
 from app.interfaces import Emit, KnowledgeBase
 from app.models import Annotation, Claim, ClaimRecord, ContractModel, LaneContext, Segment, SlowJob, annotation_id
 from app.llm.client import groq_json
+from app.session import LANE_TIMEOUT_S
 from app.verify import stt_safe, transcript_span
+
+log = logging.getLogger(__name__)
+
+# Embed + match_bank run only after extraction returns, and _lane cancels the whole
+# lane at LANE_TIMEOUT_S. Leave that tail free so a slow model call cannot eat it.
+CLAIMS_LLM_RESERVE_S = 0.4
+CLAIMS_LLM_TIMEOUT_S = LANE_TIMEOUT_S - CLAIMS_LLM_RESERVE_S
 
 
 class ExtractedClaim(ContractModel):
@@ -38,12 +47,24 @@ async def run_claims(seg: Segment, view: LaneContext, kb: KnowledgeBase, emit: E
         "last_question": view.last_question.text if view.last_question else None,
         "rolling_summary": view.rolling_summary,
         "speaker_digest": view.speaker_digest.model_dump(mode="json") if view.speaker_digest else None,
-    }, Extraction)
+    }, Extraction, timeout=CLAIMS_LLM_TIMEOUT_S)
     extracted = Extraction.model_validate(result.data)
     claims = [Claim.model_validate(c.model_dump()) for c in extracted.claims]
-    # Invalid extracted spans invalidate the result; never silently repair an invented span.
-    if any(c.text not in seg.text for c in claims):
+    # Drop an invented span; never rewrite it into the transcript. If every extracted
+    # span is absent, fail the lane so the segment stays pending.
+    kept: list[Claim] = []
+    dropped = 0
+    for claim in claims:
+        if claim.text not in seg.text:
+            dropped += 1
+            continue
+        kept.append(claim)
+    if dropped:
+        # Count only. Span text is transcript content and is not logged.
+        log.warning("dropped %d extracted claim span(s) absent from the transcript", dropped)
+    if claims and not kept:
         raise ValueError("extracted claim span is absent from transcript")
+    claims = kept
 
     def match_all():
         embed = getattr(kb, "embed_claims", None)
