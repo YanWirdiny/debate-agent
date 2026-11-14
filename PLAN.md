@@ -208,3 +208,33 @@ with the network off, then frontend work begins against the frozen backend.
 
 Cut order if behind (from CONTEXT.md section 11): consistency lane -> prefetch -> report polish ->
 second clip. Never cut: moderator exclusion, audience verification gate, event log, replay fallback.
+
+## 7. P1 status (2026-11-14) and what P1 needs from P2
+
+**P1 done (branch `p1/phase2-3`, 96 tests):** Phase 1 (db.py + Mongo sink, AudioPump, Deepgram
+streaming with reconnect and transcript fallback, segmenter, hubs, event log, `label_clip.py`),
+Phase 2 (SessionContext views, aggregator with dedupe/kill/routing, dispatcher with lane timeouts,
+metrics ticker), Phase 3 (warm-up, 2 async verdict workers, prefetch on moderator questions,
+summarizer, `REPLAY_TRANSCRIPT`, `REPLAY_EVENTS`, report JSON + HTML, `/sessions`). Plus
+`scripts/check_setup.py` and `RUNBOOK.md`.
+
+**P1 left:** label real clips + record one good run per clip (needs clips and keys); the second
+clip timeline; operator "pending" indicator (needs a contract message, see below).
+
+**What the pipeline expects from P2 (please confirm or push back):**
+- `INTEL=real` switches the runner to `lanes.claims.run_claims`, `lanes.fallacy.run_fallacy`,
+  `intel.async_jobs.*`, `intel.warmup.warm_up` and `kb.store.KnowledgeBase.load`. P1 never calls
+  `run_consistency` directly: per ARCHITECTURE.md section 3 it runs inside `run_claims`.
+- `KnowledgeBase.load(db, speaker_ids, topics=[])`: P1 passes `[]`, meaning "all topic shards".
+  `speaker_ids` = non-moderator ids from the clip timeline. P1 then calls `kb.digest(id)` per speaker.
+- Dedupe needs each claims-lane flag's `ClaimRecord` (with `annotation_id` and, ideally,
+  `claim.embedding`) emitted **before or together with** its `Annotation`.
+- `grounded_verdict` returns the updated annotation with the **same `annotation_id`** (it becomes
+  a new version); `None` = no change. It runs with a 20 s timeout; `prefetch` results go to
+  `kb.add_passages` via `asyncio.to_thread`.
+- Report methodology reads the newest document in `eval_results` with the shape
+  `{"per_category": {"F": {"precision": .., "recall": .., "n": ..}, ...}}`.
+- Metrics has `add_cache_tokens(n)`; P1 has no path to `LLMResult.usage` yet. Proposal: P2's client
+  exposes a module-level counter P1 reads, or we skip cache tokens on the dashboard.
+- Proposed contract (not done): `{"type": "pending", "segment_id", "lane"}` server message so the
+  operator view can show a timed-out lane (CONTEXT.md rule 7).

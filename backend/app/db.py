@@ -18,6 +18,8 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import ASCENDING, IndexModel
 from pymongo.errors import BulkWriteError
 
+from pydantic_settings import BaseSettings
+
 from app.config import Settings
 from app.models import Event, TimelineEntry
 
@@ -38,10 +40,15 @@ INDEXES: dict[str, list[IndexModel]] = {
 KB_INDEXES: dict[str, list[IndexModel]] = {}
 
 
+class _LenientSettings(Settings):
+    def __init__(self, **kwargs: object) -> None:
+        BaseSettings.__init__(self, **kwargs)  # skip Settings' missing-key check, keep every value as set
+
+
 def lenient_settings() -> Settings:
     """Settings for P1 scripts and the Mongo connection: reads .env and the environment but skips
     the startup check for LLM keys (label_clip.py only needs DEEPGRAM_API_KEY and MONGODB_URI)."""
-    return Settings(replay_transcript=True)
+    return _LenientSettings()
 
 
 def connect(uri: str | None = None, db_name: str | None = None) -> AsyncIOMotorDatabase:
