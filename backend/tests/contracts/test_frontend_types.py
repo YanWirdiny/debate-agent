@@ -21,6 +21,7 @@ WIRE_MODELS = (
     "StartedMessage",
     "RemovalMessage",
     "BannerMessage",
+    "PendingMessage",
     "LoadMessage",
     "StartMessage",
     "KillMessage",

@@ -104,6 +104,14 @@ export interface BannerMessage {
   text: string;
 }
 
+/** Operator only: a lane did not check this segment. Final (no late result follows). */
+export interface PendingMessage {
+  type: "pending";
+  segment_id: string;
+  lane: Lane;
+  reason: "timeout" | "error";
+}
+
 export type ServerMessage =
   | SegmentMessage
   | AnnotationMessage
@@ -112,7 +120,8 @@ export type ServerMessage =
   | ReadyMessage
   | StartedMessage
   | RemovalMessage
-  | BannerMessage;
+  | BannerMessage
+  | PendingMessage;
 
 export interface LoadMessage {
   type: "load";

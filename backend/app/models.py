@@ -170,7 +170,7 @@ class Event(ContractModel):
     session_id: str
     seq: int = Field(ge=0)
     ts: float
-    type: Literal["session_start", "segment", "annotation", "annotation_update", "kill", "session_end"]
+    type: Literal["session_start", "segment", "annotation", "annotation_update", "kill", "session_end", "pending"]
     payload_json: str
     prev_hash: str
     hash: str
@@ -217,6 +217,15 @@ class BannerMessage(ContractModel):
     level: Literal["info", "warn", "error"]
     text: str
 
+class PendingMessage(ContractModel):
+    """Operator only: a lane did not check this segment (CONTEXT.md rule 7). Final: the lane was
+    cancelled, so no late result follows. "timeout" = over the lane budget; "error" = lane failed
+    (e.g. invalid LLM output after retry). Never sent to the audience."""
+    type: Literal["pending"] = "pending"
+    segment_id: str
+    lane: Lane
+    reason: Literal["timeout", "error"]
+
 class LoadMessage(ContractModel):
     """Operator picks a clip; server runs warm-up and replies `ready`. Then `start` plays it."""
     type: Literal["load"] = "load"
@@ -230,7 +239,7 @@ class KillMessage(ContractModel):
     type: Literal["kill"] = "kill"
     annotation_id: str
 
-ServerMessage = Annotated[SegmentMessage | AnnotationMessage | AnnotationUpdateMessage | MetricsMessage | ReadyMessage | StartedMessage | RemovalMessage | BannerMessage, Field(discriminator="type")]
+ServerMessage = Annotated[SegmentMessage | AnnotationMessage | AnnotationUpdateMessage | MetricsMessage | ReadyMessage | StartedMessage | RemovalMessage | BannerMessage | PendingMessage, Field(discriminator="type")]
 ClientMessage = Annotated[LoadMessage | StartMessage | KillMessage, Field(discriminator="type")]
 
 def segment_id(session_id: str, seq: int) -> str:
