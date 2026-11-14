@@ -15,6 +15,9 @@ from app.models import LLMResult
 
 log = logging.getLogger(__name__)
 PROMPTS = Path(__file__).with_name("prompts")
+# A Gemini fallback started with less than this left on the call deadline cannot
+# finish before that deadline (and the lane cancel) fires. Skip it.
+MIN_FALLBACK_BUDGET_S = 0.2
 
 
 class LLMError(RuntimeError):
@@ -84,18 +87,23 @@ async def _call(prompt_id: str, variables: dict, schema: type[BaseModel], timeou
     if primary == "groq" and settings.llm_provider == "gemini":
         primary = "gemini"
     # Two primary attempts, then one configured fallback, all inside ONE deadline.
+    # The fallback is skipped when the time left cannot finish before that deadline.
     providers = [primary, primary] + (["fallback"] if primary == "groq" else [])
     try:
         async with asyncio.timeout(timeout):
             loop = asyncio.get_running_loop()
             deadline = loop.time() + timeout
             for index, provider in enumerate(providers):
+                budget_left = deadline - loop.time()
+                if provider == "fallback" and budget_left < MIN_FALLBACK_BUDGET_S:
+                    log.warning("llm fallback skipped prompt_hash=%s remaining_s=%.3f", prompt_hash, budget_left)
+                    break
                 is_groq = provider == "groq"
                 model = settings.llm_model_fast if is_groq else (settings.llm_model_gemini_fallback if provider == "fallback" else settings.llm_model_gemini)
                 key = (settings.groq_api_key if is_groq else settings.gemini_api_key).get_secret_value()
                 if not key or not model:
                     raise LLMError("provider key or model is not configured")
-                remaining = max(.001, (deadline - loop.time()) / (len(providers) - index))
+                remaining = max(.001, budget_left / (len(providers) - index))
                 try:
                     async with asyncio.timeout(remaining):
                         if is_groq:

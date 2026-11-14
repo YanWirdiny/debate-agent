@@ -52,6 +52,7 @@ FINAL_RESULTS_TIMEOUT_S = 10.0
 SUMMARY_EVERY_TURNS = 6
 ASYNC_JOB_TIMEOUT_S = 20.0  # Gemini grounded verdict / prefetch / summarize
 ASYNC_WORKERS = 2
+LANE_TIMEOUT_S = 1.2  # _lane cancels a lane that exceeds this
 
 Source = Literal["replay", "deepgram", "events"]
 
@@ -194,7 +195,7 @@ class SessionRunner:
         archive_path: Path | None = None,
         audience_min_conf: float = DEFAULT_AUDIENCE_MIN_CONF,
         lane_concurrency: int = 8,
-        lane_timeout: float = 1.2,
+        lane_timeout: float = LANE_TIMEOUT_S,
         speed: float = 1.0,
         source: Source = "replay",
         deepgram_key: str = "",

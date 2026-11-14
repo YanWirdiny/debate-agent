@@ -309,3 +309,85 @@ async def test_gemini_adapter_uses_async_sdk_schema_and_closes(monkeypatch):
     await client._gemini('mock', 'fixture-key', 'Rules', '{}', Output, .25, True, 'cache')
     config = generate.call_args.kwargs['config']
     assert config.cached_content == 'cache' and config.system_instruction is None and config.tools
+
+
+def _extracted(text, **updates):
+    claim = dict(text=text, decontextualized=text, entities=[], numbers=[], topic=None)
+    claim.update(updates)
+    return claim
+
+
+async def test_claims_llm_timeout_is_shorter_than_the_lane_budget(monkeypatch, kb, seg):
+    import inspect
+    from app.session import LANE_TIMEOUT_S, SessionRunner
+    mock = AsyncMock(return_value=SimpleNamespace(data={'checkworthy': False, 'claims': []}, model_id='m', prompt_hash='h'))
+    monkeypatch.setattr(claims, 'groq_json', mock)
+    await claims.run_claims(seg, LaneContext(), kb, lambda item: None, asyncio.Queue())
+    timeout = mock.await_args.kwargs['timeout']
+    lane_timeout = inspect.signature(SessionRunner.__init__).parameters['lane_timeout'].default
+    assert lane_timeout == LANE_TIMEOUT_S
+    assert timeout == claims.CLAIMS_LLM_TIMEOUT_S == LANE_TIMEOUT_S - claims.CLAIMS_LLM_RESERVE_S
+    assert timeout < lane_timeout
+    assert timeout == pytest.approx(.8)
+
+
+async def test_fallback_skipped_when_budget_exhausted(monkeypatch, caplog):
+    groq = AsyncMock(side_effect=RuntimeError('secret-test provider body'))
+    gemini = AsyncMock(return_value=('{"ok":true}', {}))
+    monkeypatch.setattr(client, '_groq', groq)
+    monkeypatch.setattr(client, '_gemini', gemini)
+    with caplog.at_level('WARNING'):
+        with pytest.raises(client.LLMError, match='bounded') as err:
+            await client.groq_json('claim_extract', {'sentence': 'secret transcript'}, Output, timeout=client.MIN_FALLBACK_BUDGET_S / 2)
+    assert groq.await_count == 2 and gemini.await_count == 0
+    assert 'fallback skipped' in caplog.text
+    assert 'secret transcript' not in caplog.text and 'secret-test' not in caplog.text
+    assert 'secret-test' not in str(err.value)
+
+
+async def test_one_bad_span_keeps_the_valid_claims(monkeypatch, kb, seg, caplog):
+    moon = {k: v for k, v in rows('claims')[0]['hit']['claim'].items() if k != 'embedding'}
+    other = 'Mars has two moons.'
+    bad = 'NOT-IN-TRANSCRIPT'
+    seg = seg.model_copy(update={'text': f"{moon['text']} {other}"})
+    raw = {'checkworthy': True, 'claims': [moon, _extracted(bad), _extracted(other, entities=['Mars'], numbers=['two'])]}
+    monkeypatch.setattr(claims, 'groq_json', AsyncMock(return_value=SimpleNamespace(data=raw, model_id='test-model', prompt_hash='hash')))
+    emitted = []
+    with caplog.at_level('DEBUG'):
+        await claims.run_claims(seg, LaneContext(), kb, emitted.append, asyncio.Queue())
+    records = [item for item in emitted if isinstance(item, ClaimRecord)]
+    annotations = [item for item in emitted if isinstance(item, Annotation)]
+    assert [record.claim.text for record in records] == [moon['text'], other]
+    assert [annotation.span_text for annotation in annotations] == [moon['text']]
+    assert records[0].annotation_id == annotations[0].annotation_id == 's:0:claims:0'
+    assert records[1].annotation_id is None
+    assert annotations[0].span_char_start == 0
+    assert seg.text[annotations[0].span_char_start:annotations[0].span_char_end] == moon['text']
+    assert bad not in caplog.text and seg.text not in caplog.text and other not in caplog.text
+
+
+async def test_all_bad_spans_leave_the_segment_pending(monkeypatch, kb, seg, caplog):
+    from app.hubs import Hub, RecordingClient
+    from app.models import PendingMessage
+    from app.session import SessionRunner
+    bad = ['NOT-IN-TRANSCRIPT-1', 'NOT-IN-TRANSCRIPT-2', 'NOT-IN-TRANSCRIPT-3']
+    raw = {'checkworthy': True, 'claims': [_extracted(text) for text in bad]}
+    monkeypatch.setattr(claims, 'groq_json', AsyncMock(return_value=SimpleNamespace(data=raw, model_id='m', prompt_hash='h')))
+    emitted = []
+    with caplog.at_level('DEBUG'):
+        with pytest.raises(ValueError, match='absent') as err:
+            await claims.run_claims(seg, LaneContext(), kb, emitted.append, asyncio.Queue())
+    assert emitted == []
+    assert all(text not in caplog.text and text not in str(err.value) for text in bad)
+    assert seg.text not in caplog.text
+    op, au = Hub('operator'), Hub('audience')
+    opc, auc = RecordingClient(), RecordingClient()
+    op.add(opc)
+    au.add(auc)
+    runner = SessionRunner('s', 'fixture', operator=op, audience=au, kb=kb)
+    await runner._lane(seg, 'claims', claims.run_claims(seg, LaneContext(), kb, runner.emit, asyncio.Queue()))
+    assert runner.ctx.claim_ledger == {}
+    pending = [PendingMessage.model_validate_json(message) for message in opc.messages]
+    assert [(item.segment_id, item.lane, item.reason) for item in pending] == [(seg.segment_id, 'claims', 'error')]
+    assert auc.messages == []
+    assert all(text not in caplog.text for text in bad)
