@@ -24,11 +24,14 @@ from app.session import SessionRunner  # noqa: E402
 
 
 class PrintClient:
-    def __init__(self, view: str) -> None:
+    def __init__(self, view: str, show_metrics: bool = False) -> None:
         self.view = view
+        self.show_metrics = show_metrics
 
     async def send_text(self, data: str) -> None:
         msg = json.loads(data)
+        if msg["type"] == "metrics" and not self.show_metrics:
+            return
         d = msg.get("data") or {}
         if msg["type"] == "segment":
             line = f"{d['speaker_id']:>10}: {d['text']}"
@@ -39,9 +42,9 @@ class PrintClient:
         print(f"{self.view:<8} {msg['type']:<17} {line}")
 
 
-async def main(clip_id: str, speed: float) -> None:
+async def main(clip_id: str, speed: float, show_metrics: bool = False) -> None:
     operator, audience = Hub("operator"), Hub("audience")
-    operator.add(PrintClient("operator"))
+    operator.add(PrintClient("operator", show_metrics))
     audience.add(PrintClient("audience"))
     sink = MemorySink()
     runner = SessionRunner("mock", clip_id, operator=operator, audience=audience, sink=sink, speed=speed)
@@ -49,11 +52,13 @@ async def main(clip_id: str, speed: float) -> None:
     await runner.start()
     await runner.wait()
     print(f"\n{len(sink.events)} events, hash chain valid: {verify_chain(sink.events)}")
+    print(f"metrics: {runner.metrics.snapshot().model_dump()}  p95 bank: {runner.metrics.p95_bank_ms:.0f} ms")
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--clip", default="fixture")
     p.add_argument("--speed", type=float, default=1.0)
+    p.add_argument("--metrics", action="store_true", help="print the 1 s metrics ticks too")
     a = p.parse_args()
-    asyncio.run(main(a.clip, a.speed))
+    asyncio.run(main(a.clip, a.speed, a.metrics))

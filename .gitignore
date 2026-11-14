@@ -8,3 +8,4 @@ __pycache__/
 *.wav
 node_modules/
 events.jsonl
+data/runs/

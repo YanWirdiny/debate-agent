@@ -43,13 +43,17 @@ def test_is_public_gate():
 
 
 async def test_fake_lanes_emit_valid_spans():
-    out: list[Annotation] = []
+    emitted: list = []
     q: asyncio.Queue[SlowJob] = asyncio.Queue()
     for seg in SEGMENTS:
         if seg.role == "moderator":
             continue
-        await fake.run_claims(seg, LaneContext(), None, out.append, q)  # type: ignore[arg-type]
-        await fake.run_fallacy(seg, LaneContext(), out.append)
+        await fake.run_claims(seg, LaneContext(), None, emitted.append, q)  # type: ignore[arg-type]
+        await fake.run_fallacy(seg, LaneContext(), emitted.append)
+    out: list[Annotation] = [a for a in emitted if isinstance(a, Annotation)]
+    claim_ids = {r.annotation_id for r in emitted if not isinstance(r, Annotation)}
+    assert claim_ids == {a.annotation_id for a in out if a.lane == "claims"}  # every claims flag has its ClaimRecord
+    assert q.qsize() == 1  # the "caused" sentence went to the async plane
     assert {a.lane for a in out} == {"claims", "fallacy"}
     text = {s.segment_id: s.text for s in SEGMENTS}
     for a in out:

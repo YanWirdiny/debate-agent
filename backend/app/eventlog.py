@@ -4,6 +4,8 @@
 - batches inserts every 250 ms
 - if the sink fails: keeps events in memory, appends them once to a local `events.jsonl`,
   and retries the sink on the next batch (no loss, no reordering)
+- optional `archive_path` (`log.jsonl`): every event is also appended locally, so a recorded run
+  can be replayed (REPLAY_EVENTS) or reported with the network off
 """
 from __future__ import annotations
 
@@ -65,10 +67,12 @@ class EventWriter:
         sink: EventSink | None = None,
         fallback_path: Path | None = None,
         batch_interval: float = 0.25,
+        archive_path: Path | None = None,
     ) -> None:
         self.session_id = session_id
         self.sink: EventSink = sink or MemorySink()
         self.fallback_path = fallback_path
+        self.archive_path = archive_path
         self.batch_interval = batch_interval
         self._q: asyncio.Queue[Any] = asyncio.Queue()
         self._seq = 0
@@ -102,7 +106,12 @@ class EventWriter:
         self._prev_hash = h
         return e
 
+    @property
+    def count(self) -> int:
+        return self._seq
+
     async def _write(self, events: list[Event]) -> None:
+        self._append(self.archive_path, events)
         pending = self._unsent + events
         if not pending:
             return
@@ -117,8 +126,45 @@ class EventWriter:
             self._unsent = pending
 
     def _append_fallback(self, events: list[Event]) -> None:
-        if self.fallback_path is None or not events:
+        self._append(self.fallback_path, events)
+
+    @staticmethod
+    def _append(path: Path | None, events: list[Event]) -> None:
+        if path is None or not events:
             return
-        with self.fallback_path.open("a") as f:
-            for e in events:
-                f.write(e.model_dump_json() + "\n")
+        try:
+            with path.open("a") as f:
+                for e in events:
+                    f.write(e.model_dump_json() + "\n")
+        except OSError:
+            log.exception("could not append events to %s", path)
+
+
+# --- reading a recorded session -----------------------------------------------------
+
+ARCHIVE_NAME = "log.jsonl"
+FALLBACK_NAME = "events.jsonl"
+
+
+def read_jsonl(path: Path) -> list[Event]:
+    return [Event.model_validate_json(l) for l in path.read_text().splitlines() if l.strip()]
+
+
+async def load_session_events(session_id: str, db: Any = None, runs_dir: Path | None = None) -> list[Event]:
+    """A session's log in seq order: MongoDB first, then the local archive (network off).
+    Mongo copies missing seqs are filled from the local files. Empty list = unknown session."""
+    events: dict[int, Event] = {}
+    if db is not None:
+        from app import db as dbm  # local import: db.py is optional for tests and tools
+
+        try:
+            events = {e.seq: e for e in await dbm.load_events(db, session_id)}
+        except Exception as e:
+            log.warning("could not read events for %s from MongoDB: %s", session_id, e)
+    if runs_dir is not None:
+        for name in (ARCHIVE_NAME, FALLBACK_NAME):
+            path = runs_dir / session_id / name
+            if path.exists():
+                for e in read_jsonl(path):
+                    events.setdefault(e.seq, e)
+    return [events[k] for k in sorted(events)]
