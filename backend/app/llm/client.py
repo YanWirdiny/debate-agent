@@ -15,9 +15,11 @@ from app.models import LLMResult
 
 log = logging.getLogger(__name__)
 PROMPTS = Path(__file__).with_name("prompts")
-# Realistic Gemini latency on the hot path. Each Groq attempt leaves this much of
-# the deadline untouched, and the fallback is not started with less than this left.
+# Realistic Gemini latency on the hot path. The fallback is not started with less than this left.
 MIN_FALLBACK_BUDGET_S = 0.35
+# asyncio.timeout fires slightly after the requested deadline. Hold this extra
+# back from Groq so a slow attempt still leaves MIN_FALLBACK_BUDGET_S.
+FALLBACK_SLACK_S = 0.03
 
 
 class LLMError(RuntimeError):
@@ -130,9 +132,11 @@ async def _call(prompt_id: str, variables: dict, schema: type[BaseModel], timeou
             deadline = loop.time() + timeout
             for attempt in range(2):  # first try + one retry
                 budget_left = deadline - loop.time()
-                reserve = MIN_FALLBACK_BUDGET_S if has_fallback else 0.0
-                # Leave the fallback reserve on the table. When the deadline is
-                # already shorter than that reserve, spend what is left on this attempt.
+                reserve = (MIN_FALLBACK_BUDGET_S + FALLBACK_SLACK_S) if has_fallback else 0.0
+                # Leave the fallback window plus a little slack. asyncio.timeout
+                # fires late, so reserving only the minimum lands just under it.
+                # When the deadline is already shorter than that reserve, spend
+                # what is left on this attempt.
                 remaining = budget_left - reserve if budget_left > reserve else budget_left
                 if remaining <= 0:
                     break

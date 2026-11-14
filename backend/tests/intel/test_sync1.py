@@ -343,24 +343,40 @@ async def test_first_groq_attempt_uses_most_of_the_budget(monkeypatch):
     monkeypatch.setattr(client, '_groq', slow)
     monkeypatch.setattr(client, '_gemini', gemini)
     timeout = CLAIMS_LLM_TIMEOUT_S
+    reserve = client.MIN_FALLBACK_BUDGET_S + client.FALLBACK_SLACK_S
     start = asyncio.get_running_loop().time()
-    try:
-        result = await client.groq_json('claim_extract', {}, Output, timeout=timeout)
-    except client.LLMError:
-        result = None
+    result = await client.groq_json('claim_extract', {}, Output, timeout=timeout)
     elapsed = asyncio.get_running_loop().time() - start
     assert client.MIN_FALLBACK_BUDGET_S == pytest.approx(.35)
+    assert client.FALLBACK_SLACK_S == pytest.approx(.03)
     assert len(allotted) == 1
-    assert allotted[0] == pytest.approx(timeout - client.MIN_FALLBACK_BUDGET_S, abs=0.02)
+    assert allotted[0] == pytest.approx(timeout - reserve, abs=0.02)
     assert allotted[0] > timeout / 2
     assert elapsed > allotted[0] - 0.05
     assert elapsed < allotted[0] + 0.25
-    if result is not None:
-        assert result.provider == 'gemini'
-        assert gemini.await_count == 1
+    assert result.provider == 'gemini'
+    assert gemini.await_count == 1
 
 
 async def test_groq_timeout_does_not_retry(monkeypatch):
+    calls = 0
+
+    async def slow(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(5)
+
+    gemini = AsyncMock(return_value=('{"ok":true}', {}))
+    monkeypatch.setattr(client, '_groq', slow)
+    monkeypatch.setattr(client, '_gemini', gemini)
+    result = await client.groq_json('claim_extract', {}, Output, timeout=0.8)
+    assert calls == 1
+    assert gemini.await_count == 1
+    assert result.provider == 'gemini'
+    assert result.model_id == 'test-fallback'
+
+
+async def test_http_timeout_exception_does_not_retry_groq(monkeypatch):
     groq = AsyncMock(side_effect=httpx.TimeoutException('timed out'))
     gemini = AsyncMock(return_value=('{"ok":true}', {}))
     monkeypatch.setattr(client, '_groq', groq)
@@ -369,7 +385,6 @@ async def test_groq_timeout_does_not_retry(monkeypatch):
     assert groq.await_count == 1
     assert gemini.await_count == 1
     assert result.provider == 'gemini'
-    assert result.model_id == 'test-fallback'
 
 
 async def test_fallback_skipped_when_remaining_below_minimum(monkeypatch, caplog):
@@ -403,7 +418,8 @@ async def test_fast_http_error_retries_groq_once(monkeypatch):
     assert gemini.await_count == 0
     assert result.provider == 'groq'
     first = groq.await_args_list[0].args[-1]
-    assert first == pytest.approx(timeout - client.MIN_FALLBACK_BUDGET_S, abs=0.02)
+    reserve = client.MIN_FALLBACK_BUDGET_S + client.FALLBACK_SLACK_S
+    assert first == pytest.approx(timeout - reserve, abs=0.02)
     assert first > timeout / 2
 
 
