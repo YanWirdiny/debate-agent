@@ -1,7 +1,10 @@
 """Prep scripts: draft checks, file -> Mongo shapes -> KB bank hit, topic chunking, eval scoring.
 No network, no LLM; synthetic data only."""
 
+import argparse
 import json
+
+import pytest
 
 from app.kb.store import SOURCE_TOPIC, KnowledgeBase
 from app.models import Claim
@@ -79,6 +82,31 @@ def test_reviewed_files_load_as_bank_hits(tmp_path, monkeypatch):
     kb_files.write_jsonl(d / "claims.jsonl", [broken])
     out, errors = embed_kb.collect()
     assert out["claims"] == [] and "not verbatim" in errors[0]
+
+
+def test_invalid_topic_is_rejected(capsys, tmp_path):
+    parser = build_topics.argument_parser()
+    with pytest.raises(SystemExit) as caught:
+        parser.parse_args(["../x"])
+    assert caught.value.code == 2
+    assert "../x" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit, match="resolves outside"):
+        build_topics.passages_path("../x")
+
+    ok = parser.parse_args(["economy_inflation", "--url", "https://example.invalid/cpi"])
+    assert ok.topic == "economy_inflation"
+    out = build_topics.passages_path(ok.topic)
+    root = build_topics.TOPICS.resolve()
+    assert out == (root / "economy_inflation" / "passages.jsonl").resolve()
+    assert out.is_relative_to(root)
+
+    missing = tmp_path / "missing.txt"
+    with pytest.raises(argparse.ArgumentTypeError, match="not an existing regular file"):
+        build_topics.urls_file(str(missing))
+    urls = tmp_path / "urls.txt"
+    urls.write_text("https://example.invalid/a\n")
+    assert build_topics.urls_file(str(tmp_path / ".." / tmp_path.name / "urls.txt")) == urls.resolve()
 
 
 def test_topic_chunking_keeps_short_passages_with_figures():

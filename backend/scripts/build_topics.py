@@ -28,6 +28,33 @@ from scripts.kb_files import TOPICS, merge, read_jsonl, short_id, source_id, wri
 
 MIN_CHARS, MAX_CHARS = 120, 700
 _SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"“])")
+_TOPIC = re.compile(r"^[\w-]+$")
+
+
+def topic_name(value: str) -> str:
+    """CLI topic: one path segment. `../x` and anything else outside ^[\\w-]+$ is an argparse error."""
+    if _TOPIC.fullmatch(value) is None:
+        raise argparse.ArgumentTypeError(
+            f"invalid topic {value!r}: expected ^[\\w-]+$ (letters, digits, underscore, or hyphen)"
+        )
+    return value
+
+
+def urls_file(value: str) -> Path:
+    """Resolve --urls-file and require an existing regular file before it is read."""
+    path = Path(value).resolve()
+    if not path.is_file():
+        raise argparse.ArgumentTypeError(f"--urls-file is not an existing regular file: {value}")
+    return path
+
+
+def passages_path(topic: str) -> Path:
+    """passages.jsonl for topic, after resolve, and only if it stays inside TOPICS."""
+    out = (TOPICS / topic / "passages.jsonl").resolve()
+    root = TOPICS.resolve()
+    if not out.is_relative_to(root):
+        raise SystemExit(f"error: topic {topic!r} resolves outside {root}")
+    return out
 
 
 def passages_from(text: str, keep_all: bool) -> list[str]:
@@ -49,7 +76,10 @@ def passages_from(text: str, keep_all: bool) -> list[str]:
 async def main(a: argparse.Namespace) -> int:
     urls = list(a.url)
     if a.urls_file:
-        urls += [l.split("|")[0].strip() for l in Path(a.urls_file).read_text().splitlines() if l.strip() and not l.startswith("#")]
+        urls_path = Path(a.urls_file).resolve()
+        if not urls_path.is_file():
+            raise SystemExit(f"error: --urls-file is not an existing regular file: {a.urls_file}")
+        urls += [l.split("|")[0].strip() for l in urls_path.read_text().splitlines() if l.strip() and not l.startswith("#")]
     if not urls:
         print("give --url or --urls-file")
         return 1
@@ -70,20 +100,24 @@ async def main(a: argparse.Namespace) -> int:
                                       "reliability": a.reliability or reliability(final), "quote": p,
                                       "published": a.published, "retrieved_at": dt.date.today().isoformat()}})
         print(f"{len(found):3d} passages  {final}")
-    out = TOPICS / a.topic / "passages.jsonl"
+    out = passages_path(a.topic)
     n = write_jsonl(out, merge(read_jsonl(out), drafts, key=lambda r: r["passage_id"]))
     print(f"{a.topic}: {n} passages in {out} (review: set reviewed=true), then python scripts/embed_kb.py")
     return 0
 
 
-if __name__ == "__main__":
+def argument_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("topic")
+    p.add_argument("topic", type=topic_name)
     p.add_argument("--url", action="append", default=[])
-    p.add_argument("--urls-file")
+    p.add_argument("--urls-file", type=urls_file)
     p.add_argument("--title", default="")
     p.add_argument("--publisher", default="")
     p.add_argument("--reliability", choices=["primary", "factchecker", "media"])
     p.add_argument("--published", default=None, help="YYYY-MM-DD of the source")
     p.add_argument("--all", action="store_true", help="keep passages without figures too")
-    sys.exit(asyncio.run(main(p.parse_args())))
+    return p
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main(argument_parser().parse_args())))
