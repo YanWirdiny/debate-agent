@@ -319,8 +319,8 @@ Clock: frontend sends `start`; server replies `{t0_wall}` and starts the pump; f
 | 3 Review | human, in editor | drafts -> reviewed JSONL (every row checked; equal depth per speaker) | P2 (P1 spot checks) |
 | 4 Topics | `build_topics.py` | official data pages + fact-checks -> `topics/<t>/passages.jsonl` | P2 |
 | 5 Load | `embed_kb.py` | JSONL -> embeddings -> Mongo | P2 |
-| 6 Clips | `label_clip.py` | clip -> Deepgram prerecorded + diarize -> timeline draft -> hand fix -> Mongo | P2 |
-| 7 Eval | `run_eval.py` | `eval/labeled.jsonl` -> precision/recall per category -> Mongo + report | P1 |
+| 6 Clips | `label_clip.py` | clip -> Deepgram prerecorded + diarize -> timeline draft -> hand fix -> Mongo | P1 |
+| 7 Eval | `run_eval.py` | `eval/labeled.jsonl` -> precision/recall per category -> Mongo + report | P2 |
 
 ## 13. Build order (maps to CONTEXT.md section 11)
 
