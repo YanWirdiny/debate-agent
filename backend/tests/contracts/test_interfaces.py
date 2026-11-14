@@ -14,8 +14,12 @@ FUNCTIONS = {
 }
 CLASSES = {"app.ingest": ["AudioPump", "TimelineLookup"], "app.segmenter": ["Segmenter"], "app.aggregator": ["Aggregator"], "app.eventlog": ["EventWriter"], "app.kb.store": ["KnowledgeBase"]}
 # Implemented on purpose: signatures are still checked, the "stub raises" check is skipped.
-# PENDING P2 APPROVAL (contract proposal in PLAN.md section 3).
-IMPLEMENTED = {"app.lanes.fake.run_claims", "app.lanes.fake.run_fallacy", "app.lanes.fake.run_consistency", "app.aggregator.Aggregator.is_public"}
+# Entries are functions ("module.func") or whole classes ("module.Class").
+IMPLEMENTED = {
+    "app.lanes.fake.run_claims", "app.lanes.fake.run_fallacy", "app.lanes.fake.run_consistency",
+    # P1 Phase 1
+    "app.ingest.TimelineLookup", "app.segmenter.Segmenter", "app.aggregator.Aggregator", "app.eventlog.EventWriter",
+}
 
 def check(actual, expected):
     assert inspect.signature(actual) == inspect.signature(expected)
@@ -45,10 +49,12 @@ def test_classes(module, names):
 @pytest.mark.parametrize("module,names", CLASSES.items())
 async def test_class_stubs_raise(module, names):
     for name in names:
+        if f"{module}.{name}" in IMPLEMENTED:
+            continue
         cls = getattr(importlib.import_module(module), name)
         instance = cls()
         for method in getattr(api, name).__dict__:
-            if method.startswith("_") or f"{module}.{name}.{method}" in IMPLEMENTED:
+            if method.startswith("_"):
                 continue
             bound = getattr(instance, method)
             args = [None for p in inspect.signature(bound).parameters.values() if p.default is inspect.Parameter.empty]
