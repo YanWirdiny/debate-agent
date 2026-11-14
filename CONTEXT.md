@@ -213,7 +213,10 @@ class Annotation(BaseModel):
 ```
 
 WebSocket messages (server -> client): `{"type": "segment", "data": Segment}`,
-`{"type": "annotation", "data": Annotation}`, `{"type": "metrics", "data": {"p50_ms":..,"p95_ms":..,"bank_hit_rate":..}}`.
+`{"type": "annotation", "data": Annotation}`, `{"type": "annotation_update", "data": Annotation}`,
+`{"type": "metrics", "data": {"p50_ms":..,"p95_ms":..,"bank_hit_rate":..,"cache_tokens":..,"loop_lag_ms":..}}`,
+`{"type": "ready", "session_id": ".."}`, `{"type": "started", "t0_wall": ..}`,
+`{"type": "removal", "annotation_id": "..", "status": "withdrawn" | "killed"}`.
 Client -> server: `{"type": "start", "clip_id": ".."}`, `{"type": "kill", "annotation_id": ".."}`.
 Endpoints: `GET /ws/audience`, `GET /ws/operator`, `GET /report/{session_id}`, `GET /clips`.
 

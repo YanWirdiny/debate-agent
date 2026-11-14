@@ -4,7 +4,7 @@ Internal records use JSON-safe embeddings; runtime indexes may convert to numpy.
 Candidate annotations deliberately permit missing evidence; verification is an aggregator duty.
 """
 from typing import Annotated, Any, Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Role = Literal["speaker", "moderator"]
 Category = Literal["F", "M", "D", "L", "C", "U", "V"]
@@ -56,6 +56,12 @@ class Annotation(ContractModel):
     model_id: str | None
     prompt_hash: str | None
     repeat_count: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def span_end_at_least_start(self) -> "Annotation":
+        if self.span_char_end < self.span_char_start:
+            raise ValueError("span_char_end must be >= span_char_start")
+        return self
 
 class Claim(ContractModel):
     text: str

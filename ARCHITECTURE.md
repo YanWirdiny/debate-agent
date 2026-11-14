@@ -285,7 +285,7 @@ Caption logic: keep the last 2 segments in the caption bar. When an annotation b
 if its segment is still in the bar, underline `span_text` with the category color + letter chip;
 otherwise push it to the side rail with speaker, timestamp and chip. Removal messages strike through.
 
-Clock: frontend sends `start`; server replies `{t0_wall}` and starts the pump; frontend calls
+Clock: frontend sends `start`; server replies `{"type": "started", "t0_wall": ..}` and starts the pump; frontend calls
 `video.play()` on receipt. If drift > 300 ms, frontend seeks the video to match server clip time.
 
 ## 10. Failure modes and fallbacks

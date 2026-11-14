@@ -1,5 +1,19 @@
 from pathlib import Path
-from app.config import Settings
+import pytest
+import app.config as app_config
+from app.config import ENV_FILE, MissingRuntimeConfig, Settings
+
+REQUIRED_KEYS = [
+    "DEEPGRAM_API_KEY",
+    "GROQ_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_FACTCHECK_KEY",
+]
+REQUIRED_MODELS = [
+    "LLM_MODEL_FAST",
+    "LLM_MODEL_GEMINI",
+    "LLM_MODEL_GEMINI_FALLBACK",
+]
 
 def test_env_inventory():
     example = Path(__file__).parents[2] / ".env.example"
@@ -16,3 +30,67 @@ def test_env_parsing(monkeypatch):
     assert settings.replay_events == "recorded-session"
     assert settings.audience_min_conf == .9
     assert "secret-fixture" not in repr(settings)
+
+def _clear_runtime_env(monkeypatch):
+    for name in [*REQUIRED_KEYS, *REQUIRED_MODELS, "REPLAY_TRANSCRIPT", "REPLAY_EVENTS"]:
+        monkeypatch.delenv(name, raising=False)
+
+def test_env_file_is_backend_dotenv_not_cwd(tmp_path, monkeypatch):
+    package_dir = Path(app_config.__file__).resolve().parent
+    assert ENV_FILE == package_dir.parent / ".env"
+    assert ENV_FILE.is_absolute()
+    assert Path(Settings.model_config["env_file"]) == ENV_FILE
+    real_before = ENV_FILE.read_bytes() if ENV_FILE.exists() else None
+    package_env = tmp_path / "package.env"
+    package_env.write_text("GROQ_API_KEY=from-backend-file\nREPLAY_TRANSCRIPT=1\n")
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / ".env").write_text("GROQ_API_KEY=from-cwd\nREPLAY_TRANSCRIPT=0\n")
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.chdir(work)
+    monkeypatch.setitem(Settings.model_config, "env_file", package_env)
+    settings = Settings()
+    real_after = ENV_FILE.read_bytes() if ENV_FILE.exists() else None
+    assert real_before == real_after
+    assert settings.groq_api_key.get_secret_value() == "from-backend-file"
+    assert settings.replay_transcript is True
+
+def test_missing_settings_fail_fast(monkeypatch):
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setenv("REPLAY_TRANSCRIPT", "0")
+    monkeypatch.setenv("REPLAY_EVENTS", "")
+    monkeypatch.setenv("GROQ_API_KEY", "present")
+    monkeypatch.setenv("LLM_MODEL_FAST", "fast-model")
+    with pytest.raises(MissingRuntimeConfig) as exc:
+        Settings(_env_file=None)
+    message = str(exc.value)
+    assert "API keys: DEEPGRAM_API_KEY, GEMINI_API_KEY, GOOGLE_FACTCHECK_KEY" in message
+    assert "LLM_MODEL_* settings: LLM_MODEL_GEMINI, LLM_MODEL_GEMINI_FALLBACK" in message
+    assert "GROQ_API_KEY" not in message
+    assert "LLM_MODEL_FAST" not in message
+    assert exc.value.missing == [
+        "DEEPGRAM_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_FACTCHECK_KEY",
+        "LLM_MODEL_GEMINI",
+        "LLM_MODEL_GEMINI_FALLBACK",
+    ]
+
+@pytest.mark.parametrize("replay", [{"REPLAY_TRANSCRIPT": "1"}, {"REPLAY_EVENTS": "recorded-session"}])
+def test_replay_fallback_skips_required_settings(monkeypatch, replay):
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setenv("REPLAY_TRANSCRIPT", "0")
+    monkeypatch.setenv("REPLAY_EVENTS", "")
+    for name, value in replay.items():
+        monkeypatch.setenv(name, value)
+    Settings(_env_file=None)
+
+def test_complete_settings_start(monkeypatch):
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setenv("REPLAY_TRANSCRIPT", "0")
+    monkeypatch.setenv("REPLAY_EVENTS", "")
+    for name in [*REQUIRED_KEYS, *REQUIRED_MODELS]:
+        monkeypatch.setenv(name, "set-for-test")
+    settings = Settings(_env_file=None)
+    assert settings.llm_model_gemini_fallback == "set-for-test"
+    assert settings.deepgram_api_key.get_secret_value() == "set-for-test"
