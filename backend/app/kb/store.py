@@ -3,7 +3,7 @@ import asyncio
 from typing import Any, Callable, Literal, Protocol, Self
 from pydantic import BaseModel
 from app.models import (Annotation, BankHit, Claim, ClaimRecord, Clip, LaneContext,
-                        LLMResult, Passage, Segment, SlowJob, Statement, Word)
+                        LLMResult, Passage, Segment, SlowJob, SpeakerDigest, Statement, Word)
 
 class KnowledgeBase:
     @classmethod
@@ -23,4 +23,7 @@ class KnowledgeBase:
         raise NotImplementedError
 
     def topic_for(self, text: str) -> str | None:
+        raise NotImplementedError
+
+    def digest(self, speaker_id: str) -> SpeakerDigest | None:
         raise NotImplementedError

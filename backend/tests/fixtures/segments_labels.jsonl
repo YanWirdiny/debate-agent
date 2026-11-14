@@ -1,0 +1,20 @@
+{"segment_id": "fixture:0", "expected_category": null, "subtype": null, "note": "moderator: never flagged"}
+{"segment_id": "fixture:1", "expected_category": "F", "subtype": null, "note": "unemployment is not zero"}
+{"segment_id": "fixture:2", "expected_category": "V", "subtype": null, "note": "correct percentage-point arithmetic; must NOT be flagged D"}
+{"segment_id": "fixture:3", "expected_category": "L", "subtype": "ad_hominem", "note": "attacks shoes, not the budget"}
+{"segment_id": "fixture:4", "expected_category": null, "subtype": null, "note": "moderator: never flagged"}
+{"segment_id": "fixture:5", "expected_category": "L", "subtype": "false_dilemma", "note": null}
+{"segment_id": "fixture:6", "expected_category": null, "subtype": null, "note": "proposal/prediction, not checkable"}
+{"segment_id": "fixture:7", "expected_category": "L", "subtype": "hasty_generalization", "note": "one anecdote -> every hospital"}
+{"segment_id": "fixture:8", "expected_category": null, "subtype": null, "note": "moderator: never flagged"}
+{"segment_id": "fixture:9", "expected_category": "F", "subtype": null, "note": "Earth has one natural moon"}
+{"segment_id": "fixture:10", "expected_category": "V", "subtype": null, "note": null}
+{"segment_id": "fixture:11", "expected_category": "L", "subtype": "slippery_slope", "note": null}
+{"segment_id": "fixture:12", "expected_category": null, "subtype": null, "note": "moderator: never flagged"}
+{"segment_id": "fixture:13", "expected_category": "V", "subtype": null, "note": null}
+{"segment_id": "fixture:14", "expected_category": "L", "subtype": "whataboutism", "note": "also evades the moderator question (red_herring is acceptable)"}
+{"segment_id": "fixture:15", "expected_category": "L", "subtype": "strawman", "note": "opponent_span must quote fixture:11"}
+{"segment_id": "fixture:16", "expected_category": null, "subtype": null, "note": "moderator: never flagged"}
+{"segment_id": "fixture:17", "expected_category": null, "subtype": null, "note": "openly acknowledged change; C only if the KB holds a differing prior statement"}
+{"segment_id": "fixture:18", "expected_category": "L", "subtype": "post_hoc", "note": null}
+{"segment_id": "fixture:19", "expected_category": null, "subtype": null, "note": "moderator: never flagged"}

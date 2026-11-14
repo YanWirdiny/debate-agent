@@ -6,3 +6,5 @@ __pycache__/
 *.npy
 *.mp4
 *.wav
+node_modules/
+events.jsonl
