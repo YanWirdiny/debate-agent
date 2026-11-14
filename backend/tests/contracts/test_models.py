@@ -59,6 +59,11 @@ def test_fixture_and_ids():
         assert seg.segment_id == m.segment_id(seg.session_id, i)
     assert m.annotation_id("fixture:1", "claims", 0) == ANN["annotation_id"]
 
+def test_annotation_span_end_at_least_start():
+    assert m.Annotation.model_validate(dict(ANN, span_char_start=4, span_char_end=4)).span_char_end == 4
+    with pytest.raises(ValidationError, match="span_char_end"):
+        m.Annotation.model_validate(dict(ANN, span_char_start=4, span_char_end=3))
+
 def test_independent_defaults():
     first = m.Claim.model_validate(CLAIM)
     second = m.Claim.model_validate(CLAIM)

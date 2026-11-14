@@ -1,0 +1,28 @@
+name: contracts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python from backend/.python-version
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Contract tests
+        working-directory: backend
+        env:
+          UV_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: uv sync --locked && uv run pytest tests/contracts
