@@ -11,3 +11,5 @@ events.jsonl
 data/runs/
 *.egg-info/
 data/raw/
+!data/clips/economy_v2/clip.mp4
+!data/clips/economy_v2/audio.wav
