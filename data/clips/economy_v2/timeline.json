@@ -1,19 +1,19 @@
 [
   {
     "t_start": 0.0,
-    "t_end": 4.0,
+    "t_end": 4.5,
     "speaker_id": "moderator",
     "role": "moderator"
   },
   {
-    "t_start": 4.0,
-    "t_end": 27.0,
+    "t_start": 4.5,
+    "t_end": 27.5,
     "speaker_id": "harris",
     "role": "speaker"
   },
   {
-    "t_start": 27.0,
-    "t_end": 53.5,
+    "t_start": 27.5,
+    "t_end": 54.0,
     "speaker_id": "trump",
     "role": "speaker"
   }
