@@ -317,3 +317,165 @@ async def test_gemini_adapter_uses_async_sdk_schema_and_closes(monkeypatch):
     await client._gemini('mock', 'fixture-key', 'Rules', '{}', Output, .25, True, 'cache')
     config = generate.call_args.kwargs['config']
     assert config.cached_content == 'cache' and config.system_instruction is None and config.tools
+
+
+def _extracted(text, **updates):
+    claim = dict(text=text, decontextualized=text, entities=[], numbers=[], topic=None)
+    claim.update(updates)
+    return claim
+
+
+async def test_claims_llm_timeout_is_shorter_than_the_lane_budget(monkeypatch, kb, seg):
+    import inspect
+    from app.session import LANE_TIMEOUT_S, SessionRunner
+    mock = AsyncMock(return_value=SimpleNamespace(data={'checkworthy': False, 'claims': []}, model_id='m', prompt_hash='h'))
+    monkeypatch.setattr(claims, 'groq_json', mock)
+    await claims.run_claims(seg, LaneContext(), kb, lambda item: None, asyncio.Queue())
+    timeout = mock.await_args.kwargs['timeout']
+    lane_timeout = inspect.signature(SessionRunner.__init__).parameters['lane_timeout'].default
+    assert lane_timeout == LANE_TIMEOUT_S
+    assert timeout == claims.CLAIMS_LLM_TIMEOUT_S == LANE_TIMEOUT_S - claims.CLAIMS_LLM_RESERVE_S
+    assert timeout < lane_timeout
+    assert timeout == pytest.approx(.8)
+
+
+async def test_first_groq_attempt_uses_most_of_the_budget(monkeypatch):
+    from app.lanes.claims import CLAIMS_LLM_TIMEOUT_S
+    allotted = []
+
+    async def slow(*args, **kwargs):
+        allotted.append(args[-1])
+        await asyncio.sleep(5)
+
+    gemini = AsyncMock(return_value=('{"ok":true}', {}))
+    monkeypatch.setattr(client, '_groq', slow)
+    monkeypatch.setattr(client, '_gemini', gemini)
+    timeout = CLAIMS_LLM_TIMEOUT_S
+    reserve = client.MIN_FALLBACK_BUDGET_S + client.FALLBACK_SLACK_S
+    start = asyncio.get_running_loop().time()
+    result = await client.groq_json('claim_extract', {}, Output, timeout=timeout)
+    elapsed = asyncio.get_running_loop().time() - start
+    assert client.MIN_FALLBACK_BUDGET_S == pytest.approx(.35)
+    assert client.FALLBACK_SLACK_S == pytest.approx(.03)
+    assert len(allotted) == 1
+    assert allotted[0] == pytest.approx(timeout - reserve, abs=0.02)
+    assert allotted[0] > timeout / 2
+    assert elapsed > allotted[0] - 0.05
+    assert elapsed < allotted[0] + 0.25
+    assert result.provider == 'gemini'
+    assert gemini.await_count == 1
+
+
+async def test_groq_timeout_does_not_retry(monkeypatch):
+    calls = 0
+
+    async def slow(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(5)
+
+    gemini = AsyncMock(return_value=('{"ok":true}', {}))
+    monkeypatch.setattr(client, '_groq', slow)
+    monkeypatch.setattr(client, '_gemini', gemini)
+    result = await client.groq_json('claim_extract', {}, Output, timeout=0.8)
+    assert calls == 1
+    assert gemini.await_count == 1
+    assert result.provider == 'gemini'
+    assert result.model_id == 'test-fallback'
+
+
+async def test_http_timeout_exception_does_not_retry_groq(monkeypatch):
+    groq = AsyncMock(side_effect=httpx.TimeoutException('timed out'))
+    gemini = AsyncMock(return_value=('{"ok":true}', {}))
+    monkeypatch.setattr(client, '_groq', groq)
+    monkeypatch.setattr(client, '_gemini', gemini)
+    result = await client.groq_json('claim_extract', {}, Output, timeout=0.8)
+    assert groq.await_count == 1
+    assert gemini.await_count == 1
+    assert result.provider == 'gemini'
+
+
+async def test_fallback_skipped_when_remaining_below_minimum(monkeypatch, caplog):
+    groq = AsyncMock(side_effect=TimeoutError())
+    gemini = AsyncMock(return_value=('{"ok":true}', {}))
+    monkeypatch.setattr(client, '_groq', groq)
+    monkeypatch.setattr(client, '_gemini', gemini)
+    timeout = client.MIN_FALLBACK_BUDGET_S / 2
+    with caplog.at_level('WARNING'):
+        with pytest.raises(client.LLMError, match='bounded') as err:
+            await client.groq_json('claim_extract', {'sentence': 'secret transcript'}, Output, timeout=timeout)
+    assert timeout < client.MIN_FALLBACK_BUDGET_S
+    assert groq.await_count == 1
+    assert gemini.await_count == 0
+    assert 'fallback skipped' in caplog.text
+    assert 'secret transcript' not in caplog.text
+    assert 'secret-test' not in caplog.text
+    assert 'secret-test' not in str(err.value)
+
+
+async def test_fast_http_error_retries_groq_once(monkeypatch):
+    request = httpx.Request('POST', 'https://example.invalid')
+    error = httpx.HTTPStatusError('429', request=request, response=httpx.Response(429, request=request))
+    groq = AsyncMock(side_effect=[error, ('{"ok":true}', {'prompt_tokens': 1})])
+    gemini = AsyncMock(return_value=('{"ok":true}', {}))
+    monkeypatch.setattr(client, '_groq', groq)
+    monkeypatch.setattr(client, '_gemini', gemini)
+    timeout = 0.8
+    result = await client.groq_json('claim_extract', {}, Output, timeout=timeout)
+    assert groq.await_count == 2
+    assert gemini.await_count == 0
+    assert result.provider == 'groq'
+    first = groq.await_args_list[0].args[-1]
+    reserve = client.MIN_FALLBACK_BUDGET_S + client.FALLBACK_SLACK_S
+    assert first == pytest.approx(timeout - reserve, abs=0.02)
+    assert first > timeout / 2
+
+
+async def test_one_bad_span_keeps_the_valid_claims(monkeypatch, kb, seg, caplog):
+    moon = {k: v for k, v in rows('claims')[0]['hit']['claim'].items() if k != 'embedding'}
+    other = 'Mars has two moons.'
+    bad = 'NOT-IN-TRANSCRIPT'
+    seg = seg.model_copy(update={'text': f"{moon['text']} {other}"})
+    raw = {'checkworthy': True, 'claims': [moon, _extracted(bad), _extracted(other, entities=['Mars'], numbers=['two'])]}
+    monkeypatch.setattr(claims, 'groq_json', AsyncMock(return_value=SimpleNamespace(data=raw, model_id='test-model', prompt_hash='hash')))
+    emitted = []
+    with caplog.at_level('DEBUG'):
+        await claims.run_claims(seg, LaneContext(), kb, emitted.append, asyncio.Queue())
+    records = [item for item in emitted if isinstance(item, ClaimRecord)]
+    annotations = [item for item in emitted if isinstance(item, Annotation)]
+    assert [record.claim.text for record in records] == [moon['text'], other]
+    # Bank hit for the moon; the unmatched Mars claim becomes a U candidate (operator only, async worker).
+    assert [annotation.span_text for annotation in annotations] == [moon['text'], other]
+    assert records[0].annotation_id == annotations[0].annotation_id == 's:0:claims:0'
+    assert records[1].annotation_id == annotations[1].annotation_id == 's:0:claims:1'
+    assert (annotations[1].category, annotations[1].status) == ('U', 'candidate')
+    assert annotations[0].span_char_start == 0
+    assert seg.text[annotations[0].span_char_start:annotations[0].span_char_end] == moon['text']
+    assert bad not in caplog.text and seg.text not in caplog.text and other not in caplog.text
+
+
+async def test_all_bad_spans_leave_the_segment_pending(monkeypatch, kb, seg, caplog):
+    from app.hubs import Hub, RecordingClient
+    from app.models import PendingMessage
+    from app.session import SessionRunner
+    bad = ['NOT-IN-TRANSCRIPT-1', 'NOT-IN-TRANSCRIPT-2', 'NOT-IN-TRANSCRIPT-3']
+    raw = {'checkworthy': True, 'claims': [_extracted(text) for text in bad]}
+    monkeypatch.setattr(claims, 'groq_json', AsyncMock(return_value=SimpleNamespace(data=raw, model_id='m', prompt_hash='h')))
+    emitted = []
+    with caplog.at_level('DEBUG'):
+        with pytest.raises(ValueError, match='absent') as err:
+            await claims.run_claims(seg, LaneContext(), kb, emitted.append, asyncio.Queue())
+    assert emitted == []
+    assert all(text not in caplog.text and text not in str(err.value) for text in bad)
+    assert seg.text not in caplog.text
+    op, au = Hub('operator'), Hub('audience')
+    opc, auc = RecordingClient(), RecordingClient()
+    op.add(opc)
+    au.add(auc)
+    runner = SessionRunner('s', 'fixture', operator=op, audience=au, kb=kb)
+    await runner._lane(seg, 'claims', claims.run_claims(seg, LaneContext(), kb, runner.emit, asyncio.Queue()))
+    assert runner.ctx.claim_ledger == {}
+    pending = [PendingMessage.model_validate_json(message) for message in opc.messages]
+    assert [(item.segment_id, item.lane, item.reason) for item in pending] == [(seg.segment_id, 'claims', 'error')]
+    assert auc.messages == []
+    assert all(text not in caplog.text for text in bad)

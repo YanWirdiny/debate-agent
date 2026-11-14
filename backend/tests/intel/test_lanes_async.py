@@ -275,3 +275,22 @@ async def test_warm_up_calls_each_hot_prompt_and_fails_clearly(monkeypatch):
             raise OSError("no cached weights")
     with pytest.raises(ValueError, match="download-model"):
         await warmup.warm_up(NoModel(), [])
+
+
+async def test_slow_extraction_still_ships_u_inside_the_lane_budget(monkeypatch):
+    """Extraction uses most of the 1.2 s lane: stance/NLI are skipped, the claim ships as U
+    (and goes to the async worker) before P1's lane timeout would cancel everything."""
+    calls = []
+
+    async def slow(prompt_id, variables, schema, timeout=1.2):
+        calls.append(prompt_id)
+        if prompt_id == "claim_extract":
+            await asyncio.sleep(1.0)
+            return result(EXTRACT)
+        raise AssertionError(f"{prompt_id} should be skipped: no budget left")
+    for mod in (claims, consistency):
+        monkeypatch.setattr(mod, "groq_json", slow)
+    out, q = [], asyncio.Queue()
+    await asyncio.wait_for(claims.run_claims(SEG, LaneContext(), kb(statements=[PRIOR]), out.append, q), 1.2)
+    assert calls == ["claim_extract"]
+    assert out[1].category == "U" and q.get_nowait().kind == "verdict"
