@@ -58,9 +58,14 @@ Speaker ids must match P2's dossier ids (`data/dossiers/<speaker_id>/`). Media f
 ## 3. Run
 
 ```bash
-uvicorn app.main:app --workers 1          # one worker: session state is in memory
+uvicorn app.main:app --workers 1          # one worker: session state is in memory (port 8000)
 python scripts/mock_stream.py --speed 4   # no server: print what operator/audience would receive
+cd ../frontend && npm install && npm run dev   # UI on http://localhost:5173 (proxies the backend)
 ```
+
+UI: `/operator` (pick clip -> Load -> wait for warm-up -> Start; Kill on any flag), `/audience` (open on
+the projector; click once to enable sound; video and captions follow the operator), `/reports/<session_id>`.
+The audience browser plays `data/clips/<id>/clip.mp4` itself, synced to the server clock (drift > 300 ms -> seek).
 
 Operator WebSocket `/ws/operator`: send `{"type":"load","clip_id":"<id>"}` -> `ready` (warm-up done),
 then `{"type":"start","clip_id":"<id>"}` -> `started` with `t0_wall` (frontend calls `video.play()`).

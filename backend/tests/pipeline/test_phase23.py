@@ -268,3 +268,24 @@ async def test_load_session_events_from_local_archive(tmp_path):
     got = await load_session_events("rec", None, tmp_path)
     assert [e.seq for e in got] == [e.seq for e in local]
     assert await load_session_events("missing", None, tmp_path) == []
+
+
+def test_http_state_and_clip_video(tmp_path, monkeypatch):
+    from app import ingest
+
+    mgr = SessionManager(runs_dir=tmp_path)
+    client = TestClient(create_app(mgr))
+    assert client.get("/state").json()["session_id"] is None
+    assert client.get("/clips/fixture/video").status_code == 404  # fixture has no video
+    assert client.get("/clips/nope/video").status_code == 404
+
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"\x00" * 4096)
+    clip = next(c for c in ingest.list_clips() if c.clip_id == "fixture").model_copy(update={"video_path": str(video)})
+    monkeypatch.setattr(ingest, "list_clips", lambda: [clip])
+    r = client.get("/clips/fixture/video", headers={"Range": "bytes=0-99"})
+    assert r.status_code == 206 and len(r.content) == 100  # range requests: the browser can seek
+
+    asyncio.run(mgr.load("fixture"))
+    st = client.get("/state").json()
+    assert st["clip_id"] == "fixture" and st["session_id"].startswith("fixture-") and st["t0_wall"] is None

@@ -59,7 +59,9 @@ passages, the eval set, clip media. Then: frontend.
 - Branch `cursor/fake-lanes-skip-moderator-42f4` is redundant (the dispatcher already skips
   moderator segments, `session.py`) and can be deleted, along with the merged `cursor/*`, `p1/*`
   and `phase0/*` branches.
-- Frontend: only `frontend/src/types.ts`; per plan it starts after the freeze.
+- Frontend: built (`frontend/`, Vite + React + Tailwind + zustand): operator, audience, report views.
+  Verified over the real WebSockets end to end (load, start, flags, kill, removal, report); not yet
+  checked by eye in a browser, and not with a real clip video.
 
 ## Next
 
