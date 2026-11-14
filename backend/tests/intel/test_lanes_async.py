@@ -188,6 +188,22 @@ async def test_fallacy_verified_candidate_and_guards(monkeypatch):
     assert out == [] and calls == []
 
 
+async def test_fallacy_timeout_is_shorter_than_the_lane_budget(monkeypatch):
+    from app.session import LANE_TIMEOUT_S
+
+    mock = AsyncMock(return_value=result({
+        "has_fallacy": False, "type": None, "span": None, "opponent_span": None,
+        "explanation": "", "confidence": 0,
+    }))
+    monkeypatch.setattr(fallacy, "groq_json", mock)
+    await fallacy.run_fallacy(FSEG, LaneContext(), lambda _item: None)
+    timeout = mock.await_args.kwargs["timeout"]
+    assert timeout == fallacy.FALLACY_LLM_TIMEOUT_S == LANE_TIMEOUT_S - fallacy.FALLACY_LLM_RESERVE_S
+    assert timeout < LANE_TIMEOUT_S
+    # groq_json only starts Gemini when the timeout still covers the fallback reserve.
+    assert timeout > client.MIN_FALLBACK_BUDGET_S + client.FALLBACK_SLACK_S
+
+
 # --- async jobs --------------------------------------------------------------------------------
 
 U = Annotation(annotation_id="s:4:claims:0", version=1, segment_id="s:4", speaker_id="speaker_a",
