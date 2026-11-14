@@ -3,7 +3,12 @@ import asyncio
 from typing import Any, Callable, Literal, Protocol, Self
 from pydantic import BaseModel
 from app.models import (Annotation, BankHit, Claim, ClaimRecord, Clip, LaneContext,
-                        LLMResult, Passage, Segment, SlowJob, Statement, Word)
+                        LLMResult, Passage, Segment, SlowJob, SpeakerDigest, Statement, Word)
+
+# Lanes push results through `emit`; it never blocks (P1: put_nowait).
+#   Annotation  -> aggregator
+#   ClaimRecord -> SessionContext.claim_ledger (read by the consistency lane via LaneContext)
+Emit = Callable[[Annotation | ClaimRecord], None]
 
 class DeepgramStream(Protocol):
     async def send(self, data: bytes) -> None:
@@ -29,13 +34,21 @@ class KnowledgeBase(Protocol):
     def topic_for(self, text: str) -> str | None:
         raise NotImplementedError
 
-async def run_claims(seg: Segment, view: LaneContext, kb: KnowledgeBase, emit: Callable[[Annotation], None], slow_q: asyncio.Queue[SlowJob]) -> None:
+    def digest(self, speaker_id: str) -> SpeakerDigest | None:
+        raise NotImplementedError
+
+async def warm_up(kb: KnowledgeBase, speaker_ids: list[str]) -> None:
+    """P2: load embedding model, one dummy call per hot prompt, create Gemini session cache.
+    Called by P1's SessionRunner during warm-up, before `ready`."""
     raise NotImplementedError
 
-async def run_fallacy(seg: Segment, view: LaneContext, emit: Callable[[Annotation], None]) -> None:
+async def run_claims(seg: Segment, view: LaneContext, kb: KnowledgeBase, emit: Emit, slow_q: asyncio.Queue[SlowJob]) -> None:
     raise NotImplementedError
 
-async def run_consistency(claim: Claim, seg: Segment, kb: KnowledgeBase, ledger: list[ClaimRecord], emit: Callable[[Annotation], None]) -> None:
+async def run_fallacy(seg: Segment, view: LaneContext, emit: Emit) -> None:
+    raise NotImplementedError
+
+async def run_consistency(claim: Claim, seg: Segment, kb: KnowledgeBase, ledger: list[ClaimRecord], emit: Emit) -> None:
     raise NotImplementedError
 
 async def grounded_verdict(job: SlowJob, kb: KnowledgeBase) -> Annotation | None:

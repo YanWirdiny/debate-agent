@@ -31,6 +31,7 @@ SAMPLES = {
     "ReadyMessage": dict(session_id="fixture"), "StartedMessage": dict(t0_wall=123.),
     "RemovalMessage": dict(annotation_id=ANN["annotation_id"], status="killed"),
     "StartMessage": dict(clip_id="clip"), "KillMessage": dict(annotation_id=ANN["annotation_id"]),
+    "LoadMessage": dict(clip_id="clip"), "BannerMessage": dict(level="warn", text="Deepgram reconnecting"),
 }
 MODELS = {name: cls for name, cls in vars(m).items() if inspect.isclass(cls) and issubclass(cls, BaseModel) and cls.__module__ == m.__name__ and cls is not m.ContractModel}
 
@@ -42,7 +43,7 @@ def test_json_roundtrip(name):
     obj = MODELS[name].model_validate(SAMPLES[name])
     assert MODELS[name].model_validate_json(obj.model_dump_json()) == obj
 
-@pytest.mark.parametrize("alias,names", [(m.SlowJob, ["VerdictJob", "PrefetchJob"]), (m.ClientMessage, ["StartMessage", "KillMessage"]), (m.ServerMessage, ["SegmentMessage", "AnnotationMessage", "AnnotationUpdateMessage", "MetricsMessage", "ReadyMessage", "StartedMessage", "RemovalMessage"])])
+@pytest.mark.parametrize("alias,names", [(m.SlowJob, ["VerdictJob", "PrefetchJob"]), (m.ClientMessage, ["LoadMessage", "StartMessage", "KillMessage"]), (m.ServerMessage, ["SegmentMessage", "AnnotationMessage", "AnnotationUpdateMessage", "MetricsMessage", "ReadyMessage", "StartedMessage", "RemovalMessage", "BannerMessage"])])
 def test_discriminated_unions(alias, names):
     adapter = TypeAdapter(alias)
     for name in names:
@@ -64,3 +65,12 @@ def test_independent_defaults():
     second = m.Claim.model_validate(CLAIM)
     first.entities.append("Earth")
     assert second.entities == []
+
+def test_fixture_labels_align():
+    root = Path(__file__).parents[1] / "fixtures"
+    segs = [m.Segment.model_validate_json(l) for l in (root / "segments.jsonl").read_text().splitlines()]
+    labels = [json.loads(l) for l in (root / "segments_labels.jsonl").read_text().splitlines()]
+    assert [l["segment_id"] for l in labels] == [s.segment_id for s in segs]
+    for seg, label in zip(segs, labels):
+        if seg.role == "moderator":
+            assert label["expected_category"] is None

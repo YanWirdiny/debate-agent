@@ -6,6 +6,8 @@
 
 ## 1. The split
 
+**Assignment:** P1 (Pipeline) = Yan. P2 (Intelligence + data) = Wenley.
+
 The seam is the lane interface. One person owns **the pipeline** (moving data: audio -> segments ->
 queues -> aggregator -> event log -> WebSocket). The other owns **the intelligence** (deciding what a
 flag is: LLM calls, knowledge base, lanes, prompts, data). They meet only at typed function signatures
@@ -99,7 +101,26 @@ Done side by side (pair on one screen or a live call). Nothing else starts until
    class KnowledgeBase: load(), match_bank(), search_passages(), search_statements(), add_passages(),
                         topic_for(text) -> str | None   # nearest topic centroid, used by P1 for active_topic
    ```
-   `emit` is `Callable[[Annotation], None]`; P1 implements it as `annotation_q.put_nowait`.
+   `emit` is `Emit = Callable[[Annotation | ClaimRecord], None]` (see contract changes below).
+
+   **Status:** P2's Phase 0 (PR #2, commit `7aecd21`) is the base on `main`. Branch
+   `p1/phase0-contracts` completes Phase 0 on top of it; 58 tests pass.
+
+   **P1 additions (P1-owned files):** fake lanes that really flag (`lanes/fake.py`),
+   `Aggregator.is_public`, FastAPI `app` in `main.py`, `tests/pipeline/test_p1_basics.py`.
+
+   **Contract changes, PENDING P2 APPROVAL in the PR:**
+   - Claim ledger: `Emit = Callable[[Annotation | ClaimRecord], None]` in `interfaces.py`, used by all
+     lanes. P1 routes `ClaimRecord` into `SessionContext.claim_ledger`, which the consistency lane reads.
+   - WS messages: client `LoadMessage {"type": "load", "clip_id"}` (server warms up, replies `ready`,
+     then `start` plays) and server `BannerMessage {"type": "banner", "level", "text"}` for operator alerts.
+   - P2 hooks: `warm_up(kb, speaker_ids)` in new `app/intel/warmup.py` (stub) and
+     `KnowledgeBase.digest(speaker_id) -> SpeakerDigest | None` (stub).
+   - Stub tests: `IMPLEMENTED` set in `test_interfaces.py` skips the "stub raises" check for pieces
+     that are implemented on purpose; signatures and type hints are still checked. Proposal for
+     Phase 1: drop the "raises" checks entirely.
+   - `tests/fixtures/segments_labels.jsonl` (P2-owned, drafted by P1 for review): expected category
+     and subtype per fixture segment, with an alignment test.
 5. `config.py`: pydantic Settings with every env var in CONTEXT.md section 8; `.env.example`.
 6. `tests/contracts/`: round-trip every model through JSON; check the fake lanes and the stubs match
    `interfaces.py` signatures.

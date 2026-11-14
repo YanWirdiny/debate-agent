@@ -205,6 +205,17 @@ class RemovalMessage(ContractModel):
     annotation_id: str
     status: Literal["withdrawn", "killed"]
 
+class BannerMessage(ContractModel):
+    """Operator alert, e.g. Deepgram reconnecting or replay mode active."""
+    type: Literal["banner"] = "banner"
+    level: Literal["info", "warn", "error"]
+    text: str
+
+class LoadMessage(ContractModel):
+    """Operator picks a clip; server runs warm-up and replies `ready`. Then `start` plays it."""
+    type: Literal["load"] = "load"
+    clip_id: str
+
 class StartMessage(ContractModel):
     type: Literal["start"] = "start"
     clip_id: str
@@ -213,8 +224,8 @@ class KillMessage(ContractModel):
     type: Literal["kill"] = "kill"
     annotation_id: str
 
-ServerMessage = Annotated[SegmentMessage | AnnotationMessage | AnnotationUpdateMessage | MetricsMessage | ReadyMessage | StartedMessage | RemovalMessage, Field(discriminator="type")]
-ClientMessage = Annotated[StartMessage | KillMessage, Field(discriminator="type")]
+ServerMessage = Annotated[SegmentMessage | AnnotationMessage | AnnotationUpdateMessage | MetricsMessage | ReadyMessage | StartedMessage | RemovalMessage | BannerMessage, Field(discriminator="type")]
+ClientMessage = Annotated[LoadMessage | StartMessage | KillMessage, Field(discriminator="type")]
 
 def segment_id(session_id: str, seq: int) -> str:
     return f"{session_id}:{seq}"
