@@ -29,26 +29,53 @@ export function Audience() {
   const [videoOk, setVideoOk] = useState(true);
   const [joined, setJoined] = useState(false);
   const [source, setSource] = useState<ClipSource | null>(null);
+  const wantOriginalRef = useRef(!new URLSearchParams(location.search).has("trimmed"));
+  const [lost, setLost] = useState(false); // backend gone: stop playback instead of running on the local clock
   const wantOriginal = useMemo(() => !new URLSearchParams(location.search).has("trimmed"), []);
   const refresh = useRef(async () => {
     const st = await fetchState();
     if (st) setSession({ clipId: st.clip_id, sessionId: st.session_id, t0Wall: st.t0_wall, speed: st.speed });
+    if (st?.clip_id && wantOriginalRef.current) setSource(await fetchSource(st.clip_id)); // retried on every load/start
   });
+
+  // One audible audience tab per browser: joining here mutes every other audience tab (old tabs
+  // left open otherwise play their own copy of the debate on top of this one).
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel("bs-audience-audio");
+    const me = Math.random().toString(36).slice(2);
+    ch.onmessage = (e: MessageEvent<{ joined: string }>) => {
+      if (e.data?.joined && e.data.joined !== me) setJoined(false);
+    };
+    if (joined) ch.postMessage({ joined: me });
+    return () => ch.close();
+  }, [joined]);
 
   useViewSocket("audience", (m) => {
     if (m.type === "started" || m.type === "ready") void refresh.current(); // learn the clip id
   });
   useEffect(() => {
-    void refresh.current();
-  }, []);
+    if (conn === "open") void refresh.current(); // first connect and every reconnect
+  }, [conn]);
   useEffect(() => setVideoOk(true), [clipId]);
   useEffect(() => {
     setSource(null);
     if (clipId && wantOriginal) void fetchSource(clipId).then(setSource);
   }, [clipId, wantOriginal]);
   const orig = source && videoOk ? source : null;
+  useEffect(() => {
+    if (conn === "open") {
+      setLost(false);
+      return;
+    }
+    const id = window.setTimeout(() => setLost(true), 3000);
+    return () => window.clearTimeout(id);
+  }, [conn]);
+  useEffect(() => {
+    if (lost) video?.pause();
+  }, [lost, video]);
   const delay = useMemo(() => audienceDelay(), []);
-  useVideoSync(video, joined && videoOk, delay, orig?.window.start ?? 0, orig?.window.end ?? Infinity);
+  useVideoSync(video, joined && videoOk && !lost, delay, orig?.window.start ?? 0, orig?.window.end ?? Infinity);
   const displayTime = useDisplayTime(joined && videoOk ? video : null, delay, 100, orig?.window.start ?? 0);
 
   const bySegment = useMemo(() => annotationsBySegment(annotations), [annotations]);
@@ -100,7 +127,11 @@ export function Audience() {
               <span className="text-sm font-normal text-zinc-400">Playback follows the operator.</span>
             </button>
           )}
-          {conn !== "open" && <span className="absolute top-3 right-3 rounded bg-amber-600 px-2 py-1 text-xs font-semibold">Reconnecting…</span>}
+          {conn !== "open" && (
+            <span className="absolute top-3 right-3 rounded bg-amber-600 px-2 py-1 text-xs font-semibold">
+              {lost ? "Connection lost · playback paused" : "Reconnecting…"}
+            </span>
+          )}
           {orig && joined && <AgentLead source={orig} displayTime={displayTime} />}
         </div>
         <CaptionBar lines={lines} bySegment={bySegment} removed={removed} displayTime={displayTime} />

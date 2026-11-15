@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { categoryLabel, fmtTime, isStruck, speakerName } from "../categories";
 import { audienceDelay, useClipTime, useVideoSync } from "../clock";
+import { fetchSource, toTrimmed, type ClipSource } from "../original";
 import { AnnotatedText } from "../components/AnnotatedText";
 import { Banners } from "../components/Banners";
 import { FlagChip } from "../components/FlagChip";
@@ -26,7 +27,8 @@ export function Operator() {
   const setSession = useView((s) => s.setSession);
   const clipTime = useClipTime(500);
   const delay = useMemo(() => audienceDelay(), []);
-  const onAir = useClipTime(500, delay); // where the audience is (broadcast delay)
+  const delayed = useClipTime(500, delay); // audience clock (broadcast delay), trimmed-clip seconds
+  const [source, setSource] = useState<ClipSource | null>(null);
 
   const sock = useViewSocket("operator", (m) => {
     if (m.type === "ready") {
@@ -56,7 +58,30 @@ export function Operator() {
     if (server) setSession({ clipId: server.clip_id, speed: server.speed });
   }, [server, setSession]);
   useEffect(() => setVideoOk(true), [server?.clip_id]);
-  useVideoSync(video, videoOk, delay); // preview = what the audience sees
+  // Re-asked on every state refresh (load, start, reconnect): one failed fetch while the backend was
+  // restarting must not leave the preview on the trimmed clip for the rest of the page's life.
+  useEffect(() => {
+    if (!server?.clip_id) return setSource(null);
+    let live = true;
+    void fetchSource(server.clip_id).then((s) => live && setSource(s));
+    return () => {
+      live = false;
+    };
+  }, [server]);
+  useEffect(() => {
+    if (conn === "open") void fetchState().then(setServer);
+  }, [conn]);
+  useEffect(() => {
+    if (video) video.muted = true; // the preview never makes sound; the audience tab is the audio
+  }, [video]);
+  // The audience watches the original when the clip has one (Audience.tsx): mirror it exactly.
+  const orig = source && videoOk ? source : null;
+  // Where the audience is, in trimmed-clip seconds (what the transcript uses). Original mode: the
+  // viewer is at window.start + delayed clock in the original; map that back. In a cut the agent's
+  // next sentence is not on air yet, so the kill window is the whole cut.
+  const onAir = delayed == null ? null : orig ? toTrimmed(orig.window.start + delayed, orig.edl) : delayed;
+  const viewerAt = delayed == null ? null : orig ? orig.window.start + delayed : delayed;
+  useVideoSync(video, videoOk, delay, orig?.window.start ?? 0, orig?.window.end ?? Infinity); // preview = what the audience sees
 
   const bySegment = useMemo(() => annotationsBySegment(annotations), [annotations]);
   const pendingCount = useMemo(() => Object.values(pending).reduce((n, p) => n + p.length, 0), [pending]);
@@ -118,7 +143,8 @@ export function Operator() {
               Report
             </Link>
           )}
-          <a href="/audience" target="_blank" className="text-zinc-300 underline hover:text-white">
+          {/* Named target: reuse one audience tab instead of stacking audible copies. */}
+          <a href="/audience" target="bs-audience" className="text-zinc-300 underline hover:text-white">
             Audience view
           </a>
           <span className={`h-2.5 w-2.5 rounded-full ${conn === "open" ? "bg-emerald-500" : "bg-amber-500"}`} title={`socket ${conn}`} />
@@ -143,15 +169,20 @@ export function Operator() {
           <Transcript segments={shown} bySegment={bySegment} pending={pending} onKill={kill} live={phase === "live"} onAir={onAir} partial={partial} />
         </section>
         <aside className="border-t border-zinc-800 p-4 lg:w-96 lg:border-t-0 lg:border-l">
-          <div className="overflow-hidden rounded-lg bg-black">
+          <div className="relative overflow-hidden rounded-lg bg-black">
             {server?.clip_id && videoOk ? (
-              <video ref={setVideo} key={server.clip_id} src={`/clips/${encodeURIComponent(server.clip_id)}/video`} muted playsInline className="aspect-video w-full" onError={() => setVideoOk(false)} />
+              <>
+              <span className="absolute top-2 left-2 z-10 rounded bg-black/70 px-1.5 py-0.5 text-xs text-zinc-300">
+                {orig ? "original (as the audience sees it)" : "trimmed clip"}
+              </span>
+              <video ref={setVideo} key={`${server.clip_id}:${orig ? "original" : "video"}`} src={`/clips/${encodeURIComponent(server.clip_id)}/${orig ? "original" : "video"}`} muted playsInline className="aspect-video w-full" onError={() => setVideoOk(false)} />
+              </>
             ) : (
               <p className="aspect-video p-6 text-sm text-zinc-500">{server?.clip_id ? "No video for this clip." : "Load a clip."}</p>
             )}
           </div>
           <p className="mt-2 text-xs text-zinc-500">
-            Preview = audience picture, {delay} s behind live{t0Wall ? "" : " once started"} (muted). Flags on lines marked
+            Preview = audience picture{orig ? " (untrimmed original" + (viewerAt != null && viewerAt >= 0 ? `, at ${fmtTime(viewerAt)}` : "") + ")" : ""}, {delay} s behind live{t0Wall ? "" : " once started"} (muted). Flags on lines marked
             “not on air” can be killed before the audience sees them.
           </p>
           <Legend />

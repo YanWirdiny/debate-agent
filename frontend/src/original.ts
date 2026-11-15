@@ -45,6 +45,19 @@ export function toOrig(t: number, edl: EdlPiece[]): number {
   return p.orig_start + (t - p.trim_start);
 }
 
+/** Original time -> trimmed time the viewer has reached. In a cut: the end of the piece before it
+ *  (everything analysed so far has been seen); before the first piece: -1 (nothing seen yet). */
+export function toTrimmed(t: number, edl: EdlPiece[]): number {
+  let reached = -1;
+  for (const p of edl) {
+    const len = p.trim_end - p.trim_start;
+    if (t < p.orig_start) break;
+    if (t < p.orig_start + len) return p.trim_start + (t - p.orig_start);
+    reached = p.trim_end;
+  }
+  return reached;
+}
+
 /** Is original time `t` inside the viewer's window but in a cut (not analysed)? */
 export function inCut(t: number, src: ClipSource): boolean {
   if (t < src.window.start || t > src.window.end) return false;
