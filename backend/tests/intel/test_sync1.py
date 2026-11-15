@@ -312,7 +312,7 @@ async def test_gemini_adapter_uses_async_sdk_schema_and_closes(monkeypatch):
     assert seen['closed'] and seen['http_options'].timeout == 250
     assert seen['http_options'].retry_options.attempts == 1
     config = generate.call_args.kwargs['config']
-    assert config.response_mime_type == 'application/json' and config.response_schema is Output
+    assert config.response_mime_type == 'application/json' and config.response_json_schema == Output.model_json_schema()
     assert config.temperature == 0 and config.system_instruction == 'Rules'
     await client._gemini('mock', 'fixture-key', 'Rules', '{}', Output, .25, True, 'cache')
     config = generate.call_args.kwargs['config']

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import itertools
 import json
 import logging
 import math
@@ -11,6 +12,7 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel, ValidationError
 from app.config import Settings
+from app.llm.budget import BUDGET, cost_usd, is_rate_limited
 from app.models import LLMResult
 
 log = logging.getLogger(__name__)
@@ -20,6 +22,18 @@ MIN_FALLBACK_BUDGET_S = 0.35
 # asyncio.timeout fires slightly after the requested deadline. Hold this extra
 # back from Groq so a slow attempt still leaves MIN_FALLBACK_BUDGET_S.
 FALLBACK_SLACK_S = 0.03
+# LLM_MODEL_FAST may list several Groq models ("a,b,c"). Groq rate limits are per model, so calls
+# rotate across them and a retry goes to the next one.
+_GROQ_RR = itertools.count()
+
+
+def _reasoning(model: str) -> dict:
+    """Reasoning models spend max_tokens thinking and miss the 0.8 s budget: turn it down."""
+    if model.startswith("openai/gpt-oss"):
+        return {"reasoning_effort": "low"}
+    if "qwen3" in model:
+        return {"reasoning_effort": "none"}
+    return {}
 
 
 class LLMError(RuntimeError):
@@ -46,7 +60,7 @@ async def _groq(model: str, key: str, prompt: str, payload: str, schema: type[Ba
     async with httpx.AsyncClient(timeout=remaining) as client:
         response = await client.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {key}"}, json={
             "model": model, "temperature": 0, "max_tokens": 1024,
-            "response_format": {"type": "json_object"},
+            "response_format": {"type": "json_object"}, **_reasoning(model),
             "messages": [
                 {"role": "system", "content": prompt + "\nReturn JSON matching this schema:\n" + json.dumps(schema.model_json_schema())},
                 {"role": "user", "content": payload},
@@ -63,7 +77,10 @@ async def _gemini(model: str, key: str, prompt: str, payload: str, schema: type[
     from google import genai
     from google.genai import types
 
-    config = dict(temperature=0, max_output_tokens=2048, response_mime_type="application/json", response_schema=schema)
+    # response_json_schema, not response_schema: the SDK turns a pydantic model with extra="forbid"
+    # into an `additional_properties` field the Gemini API rejects (400 INVALID_ARGUMENT).
+    config = dict(temperature=0, max_output_tokens=2048, response_mime_type="application/json",
+                  response_json_schema=schema.model_json_schema())
     if cache_name:
         config["cached_content"] = cache_name
         # Gemini does not permit system_instruction alongside cached_content.
@@ -77,7 +94,8 @@ async def _gemini(model: str, key: str, prompt: str, payload: str, schema: type[
         if not response.candidates or str(response.candidates[0].finish_reason).split(".")[-1] != "STOP":
             raise LLMError("incomplete provider output")
         usage = response.usage_metadata
-        return response.text, {"prompt_tokens": usage.prompt_token_count or 0, "completion_tokens": usage.candidates_token_count or 0, "cached_tokens": usage.cached_content_token_count or 0} if usage else {}
+        return response.text, {"prompt_tokens": usage.prompt_token_count or 0, "completion_tokens": usage.candidates_token_count or 0,
+                               "thinking_tokens": getattr(usage, "thoughts_token_count", 0) or 0, "cached_tokens": usage.cached_content_token_count or 0} if usage else {}
 
 
 def _is_timeout(exc: BaseException) -> bool:
@@ -95,10 +113,12 @@ async def _call(prompt_id: str, variables: dict, schema: type[BaseModel], timeou
     # One primary retry, and only after a fast failure. A timeout is not retried:
     # the first attempt already held the deadline minus the Gemini reserve.
     has_fallback = primary == "groq"
+    fast_models = [m.strip() for m in str(settings.llm_model_fast).split(",") if m.strip()]
+    groq_turn = [next(_GROQ_RR)]
 
     def model_for(provider: str) -> str:
         if provider == "groq":
-            return settings.llm_model_fast
+            return fast_models[groq_turn[0] % len(fast_models)] if fast_models else ""
         if provider == "fallback":
             return settings.llm_model_gemini_fallback
         return settings.llm_model_gemini
@@ -110,20 +130,50 @@ async def _call(prompt_id: str, variables: dict, schema: type[BaseModel], timeou
             message = "llm SDK attempt failed provider=%s model=%s prompt_hash=%s"
         log.warning(message, "groq" if provider == "groq" else "gemini", model_for(provider), prompt_hash)
 
+    async def gemini_budgeted(model: str, remaining: float) -> tuple[str, dict, str]:
+        """Paid key while under GEMINI_BUDGET_USD, else (or on a 429) the free GEMINI_API_KEY_2."""
+        keys = BUDGET.keys(settings)
+        if not keys:
+            raise LLMError("no gemini key available (unset, or paid budget spent and no GEMINI_API_KEY_2)")
+        loop = asyncio.get_running_loop()
+        end = loop.time() + remaining
+        for i, gk in enumerate(keys):
+            left = end - loop.time()
+            if left <= 0:
+                break
+            try:
+                async with asyncio.timeout(left):
+                    # A context cache belongs to the paid key's project.
+                    raw, usage = await _gemini(model, gk.key, prompt, payload, schema, left, grounded,
+                                               cache_name if gk.tier == "paid" else None)
+            except Exception as exc:
+                if gk.tier == "paid" and is_rate_limited(exc) and i + 1 < len(keys):
+                    BUDGET.rate_limited(gk.key)
+                    continue
+                raise
+            if gk.tier == "paid":
+                BUDGET.add(gk.key, cost_usd(settings, usage, grounded))
+            return raw, usage, gk.tier
+        raise TimeoutError
+
     async def invoke(provider: str, remaining: float) -> LLMResult:
         is_groq = provider == "groq"
         model = model_for(provider)
-        key = (settings.groq_api_key if is_groq else settings.gemini_api_key).get_secret_value()
-        if not key or not model:
+        if not model:
             raise LLMError("provider key or model is not configured")
+        tier = ""
         async with asyncio.timeout(remaining):
             if is_groq:
+                key = settings.groq_api_key.get_secret_value()
+                if not key:
+                    raise LLMError("provider key or model is not configured")
                 raw, usage = await _groq(model, key, prompt, payload, schema, remaining)
             else:
-                raw, usage = await _gemini(model, key, prompt, payload, schema, remaining, grounded, cache_name)
+                raw, usage, tier = await gemini_budgeted(model, remaining)
             data = schema.model_validate_json(raw, strict=True).model_dump(mode="json")
         safe_usage = {k: v for k, v in usage.items() if isinstance(v, int) and not isinstance(v, bool)}
-        log.info("llm provider=%s model=%s prompt_hash=%s usage=%s", "groq" if is_groq else "gemini", model, prompt_hash, safe_usage)
+        log.info("llm provider=%s model=%s%s prompt_hash=%s usage=%s", "groq" if is_groq else "gemini", model,
+                 f" key={tier}" if tier else "", prompt_hash, safe_usage)
         return LLMResult(data=data, model_id=model, prompt_hash=prompt_hash, provider="groq" if is_groq else "gemini", usage=safe_usage)
 
     try:
@@ -140,6 +190,8 @@ async def _call(prompt_id: str, variables: dict, schema: type[BaseModel], timeou
                 remaining = budget_left - reserve if budget_left > reserve else budget_left
                 if remaining <= 0:
                     break
+                if attempt:
+                    groq_turn[0] += 1  # retry on the next fast model (its own rate limit)
                 try:
                     return await invoke(primary, remaining)
                 except Exception as exc:

@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     llm_model_gemini: str = ""
     llm_model_gemini_fallback: str = ""
     llm_provider: Literal["groq", "gemini"] = "groq"
+    # Gemini spend guard (app/llm/budget.py): paid key until the budget is spent, then key 2 (free tier).
+    gemini_api_key_2: SecretStr = SecretStr("")
+    gemini_budget_usd: float = Field(default=7.0, ge=0)
+    gemini_price_in_per_m: float = Field(default=0.75, ge=0)
+    gemini_price_out_per_m: float = Field(default=3.75, ge=0)
+    gemini_price_grounded_call: float = Field(default=0.014, ge=0)
     replay_transcript: bool = False
     replay_events: str = ""
     audience_min_conf: float = Field(default=0.80, ge=0, le=1)

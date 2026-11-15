@@ -1,0 +1,31 @@
+{
+  "original": {
+    "path": "economy/clip.mp4",
+    "url": "",
+    "duration": 511.77
+  },
+  "window": {
+    "start": 17.0,
+    "end": 173.51
+  },
+  "edl": [
+    {
+      "trim_start": 0.0,
+      "trim_end": 4.47,
+      "orig_start": 17.0,
+      "score": 0.913
+    },
+    {
+      "trim_start": 4.47,
+      "trim_end": 27.46,
+      "orig_start": 86.97,
+      "score": 0.972
+    },
+    {
+      "trim_start": 27.46,
+      "trim_end": 54.01,
+      "orig_start": 146.96,
+      "score": 0.976
+    }
+  ]
+}

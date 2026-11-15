@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -52,7 +53,10 @@ FINAL_RESULTS_TIMEOUT_S = 10.0
 SUMMARY_EVERY_TURNS = 6
 ASYNC_JOB_TIMEOUT_S = 20.0  # Gemini grounded verdict / prefetch / summarize
 ASYNC_WORKERS = 2
-LANE_TIMEOUT_S = 1.2  # _lane cancels a lane that exceeds this
+# _lane cancels a lane that exceeds this. Every lane budget derives from it. 1.2 s is the design
+# target; on Groq's free-tier reasoning models (~0.5 s a call) run with LANE_TIMEOUT_S=2.5 in the
+# environment. The audience view is delayed 2.5 s, so a flag still lands with its line.
+LANE_TIMEOUT_S = float(os.environ.get("LANE_TIMEOUT_S", "1.2"))
 
 Source = Literal["replay", "deepgram", "events"]
 
