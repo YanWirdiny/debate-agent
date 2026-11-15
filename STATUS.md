@@ -1,68 +1,81 @@
-# STATUS (2026-11-14, evening)
+# STATUS (2026-11-14, night)
 
-Board for [PLAN.md](PLAN.md) (section 4 phases), checked against `origin/main` at `eb22891`.
-On main: PRs #7-#10 (pipeline, economy_v2 clip), #11 (pending), #12 (P2 claim-bank foundation),
-#13/#14 (lane budgets), #15 (rest of P2 by P1, frontend, live captions). 156 backend tests pass.
+Board for [PLAN.md](PLAN.md) (section 4 phases). On main (`0ccbc81`): PRs #7-#17 (pipeline, economy_v2
+clip, pending, P2 claim bank, lane budgets, rest of P2 by P1, frontend, live captions, demo media).
+**Open: PR #19** (`p1/gemini-budget`): real-model fixes, Gemini budget, original-video audience mode.
+167 backend tests pass on #19.
 
-**Summary:** all code for the demo exists and runs end to end with `INTEL=fake`, and with
-`INTEL=real` in tests (LLM providers mocked). What is left is **keys, data and media**, then a real
-run and frontend polish. No real Groq/Gemini call has been made yet.
+**Summary:** the first **real run** worked on the economy_v2 video: live Deepgram, Groq, Gemini with
+Google Search, 12 segments and 10 flags. The audience can watch the untrimmed original while the agent
+analyses the trimmed clip about a minute ahead. What is left is **data** (claim banks, topic passages,
+eval set), prompt tuning, and a check by eye in a browser.
 
 ## Code
 
 | Area | Item | Status |
 |---|---|---|
-| Pipeline | Mongo (Atlas), ingest + Deepgram (reconnect, transcript fallback), segmenter, hubs, event log | ✅ |
-| Pipeline | SessionContext, aggregator (dedupe with number/negation guards, kill, gate), metrics | ✅ |
+| Pipeline | Mongo (Atlas), ingest + Deepgram, segmenter, hubs, event log, aggregator, metrics, report | ✅ |
 | Pipeline | Warm-up, async verdict workers, prefetch, summarizer, `REPLAY_TRANSCRIPT`, `REPLAY_EVENTS` | ✅ |
-| Pipeline | Report JSON + HTML, `check_setup.py`, `RUNBOOK.md`, `label_clip.py` | ✅ |
-| Pipeline | Operator `pending` (not checked) indicator | ✅ merged |
-| Intel | LLM client, KB store, verify, claims bank path (Wenley) | ✅ |
-| Intel | Claims retrieval + stance, U -> grounded verdict, consistency, fallacy, warm-up | ✅ (P1, authorized) |
-| Intel | Prompts: stance, fallacy, nli, grounded_verdict, prefetch, summarize, build_bank | ✅ wording still worth a review |
-| Intel | Lane budgets: extraction and fallacy leave room for the Gemini fallback (#13, #14, #15) | ✅ |
-| Intel | `INTEL=bank` (Groq only) mode | ✅ |
-| Prep | `fetch_factchecks`, `build_dossier`, `build_topics`, `embed_kb`, `run_eval` | ✅ never run against real data |
-| Prep | Embedding model (all-MiniLM-L6-v2) cached on Yan's laptop, CPU ~7 ms/sentence | ✅ |
-| Frontend | Operator, audience, report views (Vite + React + Tailwind + zustand) | ✅ |
-| Frontend | Live captions at speaking pace: `partial` words + 2.5 s audience broadcast delay | ✅ measured: all words arrive >= 2 s early |
-| Frontend | Checked by eye in a browser / with a real clip video | ⬜ not yet |
-| Frontend | More updates (requested, to be specified) | ⬜ |
+| Pipeline | `LANE_TIMEOUT_S` settable from the environment (1.2 default, 2.5 on free-tier Groq) | 🔄 PR #19 |
+| Intel | Claims (bank, retrieval + stance, U -> web verdict), consistency, fallacy, `INTEL=bank` | ✅ |
+| Intel | Gemini calls work for real (`response_json_schema`; `response_schema` was rejected with 400) | 🔄 PR #19 |
+| Intel | Groq: reasoning turned down; `LLM_MODEL_FAST` rotates over several models (per-model rate limits) | 🔄 PR #19 |
+| Intel | Gemini spend guard: paid key to $7, then free `GEMINI_API_KEY_2`; ledger per laptop | 🔄 PR #19 |
+| Intel | Prompt wording: fallacy prompt flagged the $5T deficit line wrongly; needs a tuning pass | ⬜ |
+| Prep | `fetch_factchecks`, `build_dossier`, `build_topics`, `embed_kb`, `run_eval` | ✅ never run on real data |
+| Prep | `align_clip.py`: trimmed clip -> original cut list from audio, plus captions for the cuts | 🔄 PR #19 |
+| Frontend | Operator, audience, report; live captions at speaking pace | ✅ |
+| Frontend | Audience original mode: untrimmed video, "not fact-checked" cut captions, "Agent is N s ahead" | 🔄 PR #19 |
+| Frontend | Checked by eye in a browser | ⬜ not yet (extension not connected) |
+| Frontend | Homepage / demo page / Live beta from `debate-agent-web-design.md` | ⬜ design only |
 
-## Keys, data, media (blocking a real run)
+## Keys, models, media
 
 | Item | Status |
 |---|---|
-| `DEEPGRAM_API_KEY` | ✅ set, accepted |
-| `GROQ_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_FACTCHECK_KEY`, `LLM_MODEL_*` in `backend/.env` | ⬜ empty |
-| economy_v2 `clip.mp4` + `audio.wav` | ⬜ not on disk (gitignored; share via drive) |
-| `data/dossiers/harris`, `data/dossiers/trump` (claim banks) | ⬜ empty: prep scripts, then HUMAN REVIEW of every row |
-| `data/topics/*` passages (taxes/deficit, tariffs/China first) | ⬜ empty: build + review |
+| `DEEPGRAM_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `GEMINI_API_KEY_2`, `GOOGLE_FACTCHECK_KEY` | ✅ set and tested |
+| `LLM_MODEL_FAST` | ✅ `openai/gpt-oss-20b,qwen/qwen3.8-27b,openai/gpt-oss-120b` (Groq free tier: 8k tokens/min, 1k requests/day each) |
+| `LLM_MODEL_GEMINI`, `LLM_MODEL_GEMINI_FALLBACK` | ✅ `gemini-3.5-flash-lite` (2-3 s web verdicts). `gemini-3.8-flash` was 93 s-13 min: paid tier not active yet? |
+| Gemini billing | ⚠️ $10 credit; check the key's project shows a paid tier; set a hard cap in Google's console |
+| economy_v2 `clip.mp4` + `audio.wav`; original `data/clips/economy/clip.mp4` | ✅ on main |
+| economy_v2 `source.json` (cut list 65.5 s + 37 s, 23 cut caption lines) | 🔄 PR #19; cut captions need a read-through |
+| `data/dossiers/harris`, `data/dossiers/trump` (claim banks) | ⬜ empty: prep scripts, then HUMAN REVIEW |
+| `data/topics/*` passages (taxes/deficit, tariffs/China first) | ⬜ empty |
 | `data/eval/labeled.jsonl` (50-100 sentences) | ⬜ empty |
-| Second clip: El-Sayed vs Rogers (`el_sayed`, `rogers`) video + timeline | ⬜ needs the video |
+| Second clip: El-Sayed vs Rogers | ⬜ needs the video |
+
+## First real run (economy_v2, live Deepgram, `INTEL=real`)
+
+| Measure | Value |
+|---|---|
+| Flags | 10 (U, V, M, L); 1 verified (quote found on the page) reached the audience |
+| First flag after end of sentence | 1.6-5.7 s |
+| Web verdict (Gemini + Search) | 4.4-9.4 s |
+| Lead in original mode (Harris / Trump) | 65.5 s / 102.5 s: every result is ready before the viewer hears the line |
+| Gemini cost | ~$0.17 per run (estimate) -> ~40 runs on $7 |
 
 ## Sync points
 
 | Sync | Needs | State |
 |---|---|---|
-| 1: real clip -> Deepgram -> captions, one real bank hit | clip audio, LLM keys, reviewed bank | code ready; waiting on keys/data/media |
-| 2: all categories on a real clip, audience gate, kill, no moderator flags | Sync 1 + topic passages | code ready (tested with mocks) |
+| 1: real clip -> Deepgram -> captions, one real bank hit | reviewed bank | real clip + captions + web verdicts ✅; bank hit waits on the bank |
+| 2: all categories on a real clip, audience gate, kill, no moderator flags | Sync 1 + topic passages | gate and moderator rule seen working in the real run |
 | 3: feature freeze, CONTEXT.md section 12 done | Sync 2, eval, recorded run per clip | not started |
 
 ## Open items
 
-- Speaker ids must match the clip timelines exactly: `harris`, `trump` (economy_v2).
-- Everyone sets `MONGODB_DB=debate-agent` (hyphen) in `backend/.env`.
-- Unverified until keys exist: Gemini structured JSON together with Google Search on the chosen model.
-- Live Deepgram sends final words in 1-3 s chunks: if captions bunch up in rehearsal, use `/audience?delay=3`.
-- Contract additions since Phase 0: `PendingMessage`, `PartialMessage`/`PartialWord`, `"pending"` event type.
-- Old branches (`cursor/*`, `p1/*`, `phase0/*`, `data/economy-demo`) are merged and can be deleted.
-- Docker Mongo for demo day: optional, decide before the demo.
+- Few audience flags: web verdicts usually fail the "quote on page" check. Banks fix this; a second
+  grounded attempt (there is a minute of lead in original mode) could too.
+- Run the backend with `LANE_TIMEOUT_S=2.5` while on Groq's free tier; wait ~1 min between runs.
+- Gemini ledger is per laptop: Wenley's use of the paid key is not counted on Yan's machine.
+- Cut captions: Deepgram merged the moderator with Harris; fixed with `--override 140.7-142.58=moderator:moderator`.
+- `debate-agent-web-design.md` is untracked and partly out of date (says real lanes are stubs).
+- Old branches (`cursor/*`, `p1/*`, `phase0/*`, `data/*`) merged into main can be deleted.
 
 ## Next
 
-1. Fill the LLM keys and model ids in `backend/.env`; run `scripts/check_setup.py`.
-2. Get economy_v2 media; one live run with `INTEL=fake`, then look at `/operator` + `/audience` in a browser.
-3. Build + review the harris/trump banks and topic passages (RUNBOOK section 2), `embed_kb.py`.
-4. First `INTEL=real` run on economy_v2; tune thresholds from what the operator sees; record the good run.
-5. Frontend updates (next list from Yan); eval set + `run_eval.py`; second clip.
+1. Review and merge PR #19; watch `/audience` and `/operator` in a browser on economy_v2.
+2. Build + review the harris/trump banks and topic passages (RUNBOOK section 2), `embed_kb.py`.
+3. Tune the fallacy prompt; consider a second grounded attempt for web verdicts.
+4. Confirm the Gemini paid tier, then retest `gemini-3.8-flash` for verdicts.
+5. Eval set + `run_eval.py`; record a good run per clip; second clip; homepage/demo pages from the design doc.

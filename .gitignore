@@ -13,3 +13,4 @@ data/runs/
 data/raw/
 !data/clips/economy_v2/clip.mp4
 !data/clips/economy_v2/audio.wav
+.DS_Store

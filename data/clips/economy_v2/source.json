@@ -1,0 +1,1725 @@
+{
+  "original": {
+    "path": "economy/clip.mp4",
+    "url": "",
+    "duration": 511.77
+  },
+  "window": {
+    "start": 17.0,
+    "end": 173.51
+  },
+  "edl": [
+    {
+      "trim_start": 0.0,
+      "trim_end": 4.47,
+      "orig_start": 17.0,
+      "score": 0.913
+    },
+    {
+      "trim_start": 4.47,
+      "trim_end": 27.46,
+      "orig_start": 86.97,
+      "score": 0.972
+    },
+    {
+      "trim_start": 27.46,
+      "trim_end": 54.01,
+      "orig_start": 146.96,
+      "score": 0.976
+    }
+  ],
+  "cut_captions": [
+    {
+      "t_start": 22.12,
+      "t_end": 30.14,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "So I was raised as a middle class kid, and I am actually the only person on this stage who has a plan that is",
+      "words": [
+        {
+          "text": "So",
+          "t_start": 22.12,
+          "t_end": 22.68
+        },
+        {
+          "text": "I",
+          "t_start": 22.68,
+          "t_end": 23.4
+        },
+        {
+          "text": "was",
+          "t_start": 23.4,
+          "t_end": 23.96
+        },
+        {
+          "text": "raised",
+          "t_start": 23.96,
+          "t_end": 24.44
+        },
+        {
+          "text": "as",
+          "t_start": 24.44,
+          "t_end": 24.68
+        },
+        {
+          "text": "a",
+          "t_start": 24.68,
+          "t_end": 24.76
+        },
+        {
+          "text": "middle",
+          "t_start": 24.76,
+          "t_end": 25.0
+        },
+        {
+          "text": "class",
+          "t_start": 25.0,
+          "t_end": 25.24
+        },
+        {
+          "text": "kid,",
+          "t_start": 25.24,
+          "t_end": 25.8
+        },
+        {
+          "text": "and",
+          "t_start": 26.12,
+          "t_end": 26.36
+        },
+        {
+          "text": "I",
+          "t_start": 26.36,
+          "t_end": 26.52
+        },
+        {
+          "text": "am",
+          "t_start": 26.52,
+          "t_end": 26.76
+        },
+        {
+          "text": "actually",
+          "t_start": 26.76,
+          "t_end": 27.08
+        },
+        {
+          "text": "the",
+          "t_start": 27.08,
+          "t_end": 27.4
+        },
+        {
+          "text": "only",
+          "t_start": 27.4,
+          "t_end": 27.64
+        },
+        {
+          "text": "person",
+          "t_start": 27.64,
+          "t_end": 28.12
+        },
+        {
+          "text": "on",
+          "t_start": 28.12,
+          "t_end": 28.36
+        },
+        {
+          "text": "this",
+          "t_start": 28.36,
+          "t_end": 28.6
+        },
+        {
+          "text": "stage",
+          "t_start": 28.6,
+          "t_end": 28.84
+        },
+        {
+          "text": "who",
+          "t_start": 28.84,
+          "t_end": 29.16
+        },
+        {
+          "text": "has",
+          "t_start": 29.16,
+          "t_end": 29.32
+        },
+        {
+          "text": "a",
+          "t_start": 29.32,
+          "t_end": 29.8
+        },
+        {
+          "text": "plan",
+          "t_start": 29.34,
+          "t_end": 29.74
+        },
+        {
+          "text": "that",
+          "t_start": 29.74,
+          "t_end": 29.99
+        },
+        {
+          "text": "is",
+          "t_start": 29.99,
+          "t_end": 30.14
+        }
+      ]
+    },
+    {
+      "t_start": 30.14,
+      "t_end": 33.42,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "about lifting up the middle class and working people of America.",
+      "words": [
+        {
+          "text": "about",
+          "t_start": 30.14,
+          "t_end": 30.38
+        },
+        {
+          "text": "lifting",
+          "t_start": 30.38,
+          "t_end": 30.87
+        },
+        {
+          "text": "up",
+          "t_start": 30.87,
+          "t_end": 31.11
+        },
+        {
+          "text": "the",
+          "t_start": 31.11,
+          "t_end": 31.27
+        },
+        {
+          "text": "middle",
+          "t_start": 31.27,
+          "t_end": 31.59
+        },
+        {
+          "text": "class",
+          "t_start": 31.59,
+          "t_end": 31.83
+        },
+        {
+          "text": "and",
+          "t_start": 31.83,
+          "t_end": 31.99
+        },
+        {
+          "text": "working",
+          "t_start": 31.99,
+          "t_end": 32.3
+        },
+        {
+          "text": "people",
+          "t_start": 32.3,
+          "t_end": 32.55
+        },
+        {
+          "text": "of",
+          "t_start": 32.55,
+          "t_end": 32.7
+        },
+        {
+          "text": "America.",
+          "t_start": 32.7,
+          "t_end": 33.42
+        }
+      ]
+    },
+    {
+      "t_start": 33.83,
+      "t_end": 42.47,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "I believe in the ambition, the aspirations, the dreams of the American people, and that is why I imagine and have actually a plan to",
+      "words": [
+        {
+          "text": "I",
+          "t_start": 33.83,
+          "t_end": 34.06
+        },
+        {
+          "text": "believe",
+          "t_start": 34.06,
+          "t_end": 34.47
+        },
+        {
+          "text": "in",
+          "t_start": 34.47,
+          "t_end": 34.78
+        },
+        {
+          "text": "the",
+          "t_start": 34.78,
+          "t_end": 35.02
+        },
+        {
+          "text": "ambition,",
+          "t_start": 35.02,
+          "t_end": 35.83
+        },
+        {
+          "text": "the",
+          "t_start": 35.91,
+          "t_end": 36.06
+        },
+        {
+          "text": "aspirations,",
+          "t_start": 36.06,
+          "t_end": 37.02
+        },
+        {
+          "text": "the",
+          "t_start": 37.02,
+          "t_end": 37.19
+        },
+        {
+          "text": "dreams",
+          "t_start": 37.19,
+          "t_end": 37.51
+        },
+        {
+          "text": "of",
+          "t_start": 37.51,
+          "t_end": 37.74
+        },
+        {
+          "text": "the",
+          "t_start": 37.74,
+          "t_end": 37.9
+        },
+        {
+          "text": "American",
+          "t_start": 37.9,
+          "t_end": 38.3
+        },
+        {
+          "text": "people,",
+          "t_start": 38.3,
+          "t_end": 38.86
+        },
+        {
+          "text": "and",
+          "t_start": 39.02,
+          "t_end": 39.35
+        },
+        {
+          "text": "that",
+          "t_start": 39.35,
+          "t_end": 39.51
+        },
+        {
+          "text": "is",
+          "t_start": 39.51,
+          "t_end": 39.66
+        },
+        {
+          "text": "why",
+          "t_start": 39.66,
+          "t_end": 39.98
+        },
+        {
+          "text": "I",
+          "t_start": 39.98,
+          "t_end": 40.3
+        },
+        {
+          "text": "imagine",
+          "t_start": 40.3,
+          "t_end": 40.86
+        },
+        {
+          "text": "and",
+          "t_start": 40.86,
+          "t_end": 41.19
+        },
+        {
+          "text": "have",
+          "t_start": 41.19,
+          "t_end": 41.42
+        },
+        {
+          "text": "actually",
+          "t_start": 41.42,
+          "t_end": 41.74
+        },
+        {
+          "text": "a",
+          "t_start": 41.74,
+          "t_end": 41.9
+        },
+        {
+          "text": "plan",
+          "t_start": 41.9,
+          "t_end": 42.23
+        },
+        {
+          "text": "to",
+          "t_start": 42.23,
+          "t_end": 42.47
+        }
+      ]
+    },
+    {
+      "t_start": 42.47,
+      "t_end": 44.62,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "build what I call an opportunity economy.",
+      "words": [
+        {
+          "text": "build",
+          "t_start": 42.47,
+          "t_end": 42.7
+        },
+        {
+          "text": "what",
+          "t_start": 42.7,
+          "t_end": 42.95
+        },
+        {
+          "text": "I",
+          "t_start": 42.95,
+          "t_end": 43.11
+        },
+        {
+          "text": "call",
+          "t_start": 43.11,
+          "t_end": 43.27
+        },
+        {
+          "text": "an",
+          "t_start": 43.27,
+          "t_end": 43.51
+        },
+        {
+          "text": "opportunity",
+          "t_start": 43.51,
+          "t_end": 44.14
+        },
+        {
+          "text": "economy.",
+          "t_start": 44.14,
+          "t_end": 44.62
+        }
+      ]
+    },
+    {
+      "t_start": 44.88,
+      "t_end": 52.08,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "Because here's the thing, we know that we have a a shortage of of homes and housing, and the cost of housing is too expensive",
+      "words": [
+        {
+          "text": "Because",
+          "t_start": 44.88,
+          "t_end": 45.2
+        },
+        {
+          "text": "here's",
+          "t_start": 45.2,
+          "t_end": 45.52
+        },
+        {
+          "text": "the",
+          "t_start": 45.52,
+          "t_end": 45.68
+        },
+        {
+          "text": "thing,",
+          "t_start": 45.68,
+          "t_end": 46.16
+        },
+        {
+          "text": "we",
+          "t_start": 46.4,
+          "t_end": 46.56
+        },
+        {
+          "text": "know",
+          "t_start": 46.56,
+          "t_end": 46.8
+        },
+        {
+          "text": "that",
+          "t_start": 46.8,
+          "t_end": 47.04
+        },
+        {
+          "text": "we",
+          "t_start": 47.04,
+          "t_end": 47.36
+        },
+        {
+          "text": "have",
+          "t_start": 47.36,
+          "t_end": 47.68
+        },
+        {
+          "text": "a",
+          "t_start": 47.68,
+          "t_end": 47.92
+        },
+        {
+          "text": "a",
+          "t_start": 47.92,
+          "t_end": 48.16
+        },
+        {
+          "text": "shortage",
+          "t_start": 48.16,
+          "t_end": 48.56
+        },
+        {
+          "text": "of",
+          "t_start": 48.56,
+          "t_end": 48.8
+        },
+        {
+          "text": "of",
+          "t_start": 48.8,
+          "t_end": 49.04
+        },
+        {
+          "text": "homes",
+          "t_start": 49.04,
+          "t_end": 49.36
+        },
+        {
+          "text": "and",
+          "t_start": 49.36,
+          "t_end": 49.6
+        },
+        {
+          "text": "housing,",
+          "t_start": 49.6,
+          "t_end": 50.24
+        },
+        {
+          "text": "and",
+          "t_start": 50.24,
+          "t_end": 50.48
+        },
+        {
+          "text": "the",
+          "t_start": 50.48,
+          "t_end": 50.64
+        },
+        {
+          "text": "cost",
+          "t_start": 50.64,
+          "t_end": 50.88
+        },
+        {
+          "text": "of",
+          "t_start": 50.88,
+          "t_end": 51.04
+        },
+        {
+          "text": "housing",
+          "t_start": 51.04,
+          "t_end": 51.28
+        },
+        {
+          "text": "is",
+          "t_start": 51.28,
+          "t_end": 51.52
+        },
+        {
+          "text": "too",
+          "t_start": 51.52,
+          "t_end": 51.76
+        },
+        {
+          "text": "expensive",
+          "t_start": 51.76,
+          "t_end": 52.08
+        }
+      ]
+    },
+    {
+      "t_start": 52.08,
+      "t_end": 53.52,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "for far too many people.",
+      "words": [
+        {
+          "text": "for",
+          "t_start": 52.08,
+          "t_end": 52.32
+        },
+        {
+          "text": "far",
+          "t_start": 52.32,
+          "t_end": 52.64
+        },
+        {
+          "text": "too",
+          "t_start": 52.64,
+          "t_end": 52.88
+        },
+        {
+          "text": "many",
+          "t_start": 52.88,
+          "t_end": 53.04
+        },
+        {
+          "text": "people.",
+          "t_start": 53.04,
+          "t_end": 53.52
+        }
+      ]
+    },
+    {
+      "t_start": 53.84,
+      "t_end": 63.85,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "We know that young families need support to raise their children, and I intend on extending a tax cut for those families of $6,000, which",
+      "words": [
+        {
+          "text": "We",
+          "t_start": 53.84,
+          "t_end": 54.08
+        },
+        {
+          "text": "know",
+          "t_start": 54.08,
+          "t_end": 54.32
+        },
+        {
+          "text": "that",
+          "t_start": 54.32,
+          "t_end": 54.56
+        },
+        {
+          "text": "young",
+          "t_start": 54.56,
+          "t_end": 54.96
+        },
+        {
+          "text": "families",
+          "t_start": 54.96,
+          "t_end": 55.52
+        },
+        {
+          "text": "need",
+          "t_start": 55.52,
+          "t_end": 55.92
+        },
+        {
+          "text": "support",
+          "t_start": 55.92,
+          "t_end": 56.56
+        },
+        {
+          "text": "to",
+          "t_start": 56.98,
+          "t_end": 57.3
+        },
+        {
+          "text": "raise",
+          "t_start": 57.3,
+          "t_end": 57.53
+        },
+        {
+          "text": "their",
+          "t_start": 57.53,
+          "t_end": 57.85
+        },
+        {
+          "text": "children,",
+          "t_start": 57.85,
+          "t_end": 58.41
+        },
+        {
+          "text": "and",
+          "t_start": 58.41,
+          "t_end": 58.49
+        },
+        {
+          "text": "I",
+          "t_start": 58.49,
+          "t_end": 58.82
+        },
+        {
+          "text": "intend",
+          "t_start": 58.82,
+          "t_end": 59.22
+        },
+        {
+          "text": "on",
+          "t_start": 59.22,
+          "t_end": 59.53
+        },
+        {
+          "text": "extending",
+          "t_start": 59.53,
+          "t_end": 60.26
+        },
+        {
+          "text": "a",
+          "t_start": 60.26,
+          "t_end": 60.58
+        },
+        {
+          "text": "tax",
+          "t_start": 60.58,
+          "t_end": 60.9
+        },
+        {
+          "text": "cut",
+          "t_start": 60.9,
+          "t_end": 61.38
+        },
+        {
+          "text": "for",
+          "t_start": 61.38,
+          "t_end": 61.7
+        },
+        {
+          "text": "those",
+          "t_start": 61.7,
+          "t_end": 61.94
+        },
+        {
+          "text": "families",
+          "t_start": 61.94,
+          "t_end": 62.26
+        },
+        {
+          "text": "of",
+          "t_start": 62.26,
+          "t_end": 62.58
+        },
+        {
+          "text": "$6,000,",
+          "t_start": 62.58,
+          "t_end": 63.7
+        },
+        {
+          "text": "which",
+          "t_start": 63.7,
+          "t_end": 63.85
+        }
+      ]
+    },
+    {
+      "t_start": 63.85,
+      "t_end": 70.82,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "is the largest child tax credit that we have given in a long time so that those young families can afford to buy a crib,",
+      "words": [
+        {
+          "text": "is",
+          "t_start": 63.85,
+          "t_end": 64.02
+        },
+        {
+          "text": "the",
+          "t_start": 64.02,
+          "t_end": 64.17
+        },
+        {
+          "text": "largest",
+          "t_start": 64.17,
+          "t_end": 64.9
+        },
+        {
+          "text": "child",
+          "t_start": 65.06,
+          "t_end": 65.45
+        },
+        {
+          "text": "tax",
+          "t_start": 65.45,
+          "t_end": 65.78
+        },
+        {
+          "text": "credit",
+          "t_start": 65.78,
+          "t_end": 66.02
+        },
+        {
+          "text": "that",
+          "t_start": 66.02,
+          "t_end": 66.25
+        },
+        {
+          "text": "we",
+          "t_start": 66.25,
+          "t_end": 66.41
+        },
+        {
+          "text": "have",
+          "t_start": 66.41,
+          "t_end": 66.5
+        },
+        {
+          "text": "given",
+          "t_start": 66.5,
+          "t_end": 66.73
+        },
+        {
+          "text": "in",
+          "t_start": 66.73,
+          "t_end": 66.9
+        },
+        {
+          "text": "a",
+          "t_start": 66.9,
+          "t_end": 67.06
+        },
+        {
+          "text": "long",
+          "t_start": 67.06,
+          "t_end": 67.3
+        },
+        {
+          "text": "time",
+          "t_start": 67.3,
+          "t_end": 67.78
+        },
+        {
+          "text": "so",
+          "t_start": 67.78,
+          "t_end": 68.02
+        },
+        {
+          "text": "that",
+          "t_start": 68.02,
+          "t_end": 68.25
+        },
+        {
+          "text": "those",
+          "t_start": 68.25,
+          "t_end": 68.58
+        },
+        {
+          "text": "young",
+          "t_start": 68.58,
+          "t_end": 68.9
+        },
+        {
+          "text": "families",
+          "t_start": 68.9,
+          "t_end": 69.3
+        },
+        {
+          "text": "can",
+          "t_start": 69.3,
+          "t_end": 69.53
+        },
+        {
+          "text": "afford",
+          "t_start": 69.53,
+          "t_end": 69.94
+        },
+        {
+          "text": "to",
+          "t_start": 69.94,
+          "t_end": 70.09
+        },
+        {
+          "text": "buy",
+          "t_start": 70.09,
+          "t_end": 70.34
+        },
+        {
+          "text": "a",
+          "t_start": 70.34,
+          "t_end": 70.5
+        },
+        {
+          "text": "crib,",
+          "t_start": 70.5,
+          "t_end": 70.82
+        }
+      ]
+    },
+    {
+      "t_start": 71.14,
+      "t_end": 73.94,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "buy a car seat, buy clothes for their children.",
+      "words": [
+        {
+          "text": "buy",
+          "t_start": 71.14,
+          "t_end": 71.46
+        },
+        {
+          "text": "a",
+          "t_start": 71.46,
+          "t_end": 71.62
+        },
+        {
+          "text": "car",
+          "t_start": 71.62,
+          "t_end": 71.86
+        },
+        {
+          "text": "seat,",
+          "t_start": 71.86,
+          "t_end": 72.26
+        },
+        {
+          "text": "buy",
+          "t_start": 72.26,
+          "t_end": 72.5
+        },
+        {
+          "text": "clothes",
+          "t_start": 72.5,
+          "t_end": 72.82
+        },
+        {
+          "text": "for",
+          "t_start": 72.82,
+          "t_end": 73.06
+        },
+        {
+          "text": "their",
+          "t_start": 73.06,
+          "t_end": 73.3
+        },
+        {
+          "text": "children.",
+          "t_start": 73.3,
+          "t_end": 73.94
+        }
+      ]
+    },
+    {
+      "t_start": 74.5,
+      "t_end": 78.1,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "My passion, one of them, is small businesses.",
+      "words": [
+        {
+          "text": "My",
+          "t_start": 74.5,
+          "t_end": 74.9
+        },
+        {
+          "text": "passion,",
+          "t_start": 74.9,
+          "t_end": 76.1
+        },
+        {
+          "text": "one",
+          "t_start": 76.1,
+          "t_end": 76.34
+        },
+        {
+          "text": "of",
+          "t_start": 76.34,
+          "t_end": 76.5
+        },
+        {
+          "text": "them,",
+          "t_start": 76.5,
+          "t_end": 76.82
+        },
+        {
+          "text": "is",
+          "t_start": 76.82,
+          "t_end": 76.98
+        },
+        {
+          "text": "small",
+          "t_start": 76.98,
+          "t_end": 77.46
+        },
+        {
+          "text": "businesses.",
+          "t_start": 77.46,
+          "t_end": 78.1
+        }
+      ]
+    },
+    {
+      "t_start": 78.1,
+      "t_end": 79.06,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "I was actually...",
+      "words": [
+        {
+          "text": "I",
+          "t_start": 78.1,
+          "t_end": 78.34
+        },
+        {
+          "text": "was",
+          "t_start": 78.34,
+          "t_end": 78.5
+        },
+        {
+          "text": "actually...",
+          "t_start": 78.5,
+          "t_end": 79.06
+        }
+      ]
+    },
+    {
+      "t_start": 79.06,
+      "t_end": 82.98,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "My mother raised my sister and me, but there was a woman who helped raise us.",
+      "words": [
+        {
+          "text": "My",
+          "t_start": 79.06,
+          "t_end": 79.3
+        },
+        {
+          "text": "mother",
+          "t_start": 79.3,
+          "t_end": 79.54
+        },
+        {
+          "text": "raised",
+          "t_start": 79.54,
+          "t_end": 79.86
+        },
+        {
+          "text": "my",
+          "t_start": 79.86,
+          "t_end": 80.1
+        },
+        {
+          "text": "sister",
+          "t_start": 80.1,
+          "t_end": 80.34
+        },
+        {
+          "text": "and",
+          "t_start": 80.34,
+          "t_end": 80.58
+        },
+        {
+          "text": "me,",
+          "t_start": 80.58,
+          "t_end": 80.98
+        },
+        {
+          "text": "but",
+          "t_start": 81.14,
+          "t_end": 81.3
+        },
+        {
+          "text": "there",
+          "t_start": 81.3,
+          "t_end": 81.54
+        },
+        {
+          "text": "was",
+          "t_start": 81.54,
+          "t_end": 81.7
+        },
+        {
+          "text": "a",
+          "t_start": 81.7,
+          "t_end": 81.86
+        },
+        {
+          "text": "woman",
+          "t_start": 81.86,
+          "t_end": 82.02
+        },
+        {
+          "text": "who",
+          "t_start": 82.02,
+          "t_end": 82.18
+        },
+        {
+          "text": "helped",
+          "t_start": 82.18,
+          "t_end": 82.42
+        },
+        {
+          "text": "raise",
+          "t_start": 82.42,
+          "t_end": 82.74
+        },
+        {
+          "text": "us.",
+          "t_start": 82.74,
+          "t_end": 82.98
+        }
+      ]
+    },
+    {
+      "t_start": 82.98,
+      "t_end": 84.42,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "We call her our second mother.",
+      "words": [
+        {
+          "text": "We",
+          "t_start": 82.98,
+          "t_end": 83.14
+        },
+        {
+          "text": "call",
+          "t_start": 83.14,
+          "t_end": 83.38
+        },
+        {
+          "text": "her",
+          "t_start": 83.38,
+          "t_end": 83.54
+        },
+        {
+          "text": "our",
+          "t_start": 83.54,
+          "t_end": 83.78
+        },
+        {
+          "text": "second",
+          "t_start": 83.78,
+          "t_end": 84.02
+        },
+        {
+          "text": "mother.",
+          "t_start": 84.02,
+          "t_end": 84.42
+        }
+      ]
+    },
+    {
+      "t_start": 84.42,
+      "t_end": 85.86,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "She was a small business owner.",
+      "words": [
+        {
+          "text": "She",
+          "t_start": 84.42,
+          "t_end": 84.58
+        },
+        {
+          "text": "was",
+          "t_start": 84.58,
+          "t_end": 84.74
+        },
+        {
+          "text": "a",
+          "t_start": 84.74,
+          "t_end": 84.82
+        },
+        {
+          "text": "small",
+          "t_start": 84.82,
+          "t_end": 85.06
+        },
+        {
+          "text": "business",
+          "t_start": 85.06,
+          "t_end": 85.38
+        },
+        {
+          "text": "owner.",
+          "t_start": 85.38,
+          "t_end": 85.86
+        }
+      ]
+    },
+    {
+      "t_start": 85.86,
+      "t_end": 87.06,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "I love our small businesses.",
+      "words": [
+        {
+          "text": "I",
+          "t_start": 85.86,
+          "t_end": 85.94
+        },
+        {
+          "text": "love",
+          "t_start": 85.94,
+          "t_end": 86.26
+        },
+        {
+          "text": "our",
+          "t_start": 86.26,
+          "t_end": 86.42
+        },
+        {
+          "text": "small",
+          "t_start": 86.42,
+          "t_end": 86.74
+        },
+        {
+          "text": "businesses.",
+          "t_start": 86.74,
+          "t_end": 87.06
+        }
+      ]
+    },
+    {
+      "t_start": 110.57,
+      "t_end": 119.25,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "My opponent has a plan that I call the Trump's sales tax, which would be a 20% tax on everyday goods that you rely on",
+      "words": [
+        {
+          "text": "My",
+          "t_start": 110.57,
+          "t_end": 110.81
+        },
+        {
+          "text": "opponent",
+          "t_start": 110.81,
+          "t_end": 111.29
+        },
+        {
+          "text": "has",
+          "t_start": 111.29,
+          "t_end": 111.53
+        },
+        {
+          "text": "a",
+          "t_start": 111.53,
+          "t_end": 111.69
+        },
+        {
+          "text": "plan",
+          "t_start": 111.69,
+          "t_end": 111.85
+        },
+        {
+          "text": "that",
+          "t_start": 111.85,
+          "t_end": 112.01
+        },
+        {
+          "text": "I",
+          "t_start": 112.01,
+          "t_end": 112.17
+        },
+        {
+          "text": "call",
+          "t_start": 112.17,
+          "t_end": 112.33
+        },
+        {
+          "text": "the",
+          "t_start": 112.33,
+          "t_end": 112.49
+        },
+        {
+          "text": "Trump's",
+          "t_start": 112.49,
+          "t_end": 112.89
+        },
+        {
+          "text": "sales",
+          "t_start": 112.89,
+          "t_end": 113.29
+        },
+        {
+          "text": "tax,",
+          "t_start": 113.29,
+          "t_end": 113.69
+        },
+        {
+          "text": "which",
+          "t_start": 114.05,
+          "t_end": 114.37
+        },
+        {
+          "text": "would",
+          "t_start": 114.37,
+          "t_end": 114.53
+        },
+        {
+          "text": "be",
+          "t_start": 114.53,
+          "t_end": 114.69
+        },
+        {
+          "text": "a",
+          "t_start": 114.69,
+          "t_end": 114.92
+        },
+        {
+          "text": "20%",
+          "t_start": 114.92,
+          "t_end": 115.97
+        },
+        {
+          "text": "tax",
+          "t_start": 115.97,
+          "t_end": 116.53
+        },
+        {
+          "text": "on",
+          "t_start": 116.61,
+          "t_end": 116.92
+        },
+        {
+          "text": "everyday",
+          "t_start": 116.92,
+          "t_end": 117.56
+        },
+        {
+          "text": "goods",
+          "t_start": 117.56,
+          "t_end": 118.05
+        },
+        {
+          "text": "that",
+          "t_start": 118.05,
+          "t_end": 118.2
+        },
+        {
+          "text": "you",
+          "t_start": 118.2,
+          "t_end": 118.44
+        },
+        {
+          "text": "rely",
+          "t_start": 118.44,
+          "t_end": 118.84
+        },
+        {
+          "text": "on",
+          "t_start": 118.84,
+          "t_end": 119.25
+        }
+      ]
+    },
+    {
+      "t_start": 119.25,
+      "t_end": 120.77,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "to get through the month.",
+      "words": [
+        {
+          "text": "to",
+          "t_start": 119.25,
+          "t_end": 119.48
+        },
+        {
+          "text": "get",
+          "t_start": 119.48,
+          "t_end": 119.72
+        },
+        {
+          "text": "through",
+          "t_start": 119.72,
+          "t_end": 119.97
+        },
+        {
+          "text": "the",
+          "t_start": 119.97,
+          "t_end": 120.12
+        },
+        {
+          "text": "month.",
+          "t_start": 120.12,
+          "t_end": 120.77
+        }
+      ]
+    },
+    {
+      "t_start": 121.17,
+      "t_end": 132.46,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "Economists have said that that Trump sales tax would actually result for middle class families in about $4,000 more a year because of his policies",
+      "words": [
+        {
+          "text": "Economists",
+          "t_start": 121.17,
+          "t_end": 121.81
+        },
+        {
+          "text": "have",
+          "t_start": 121.81,
+          "t_end": 122.05
+        },
+        {
+          "text": "said",
+          "t_start": 122.05,
+          "t_end": 122.44
+        },
+        {
+          "text": "that",
+          "t_start": 122.44,
+          "t_end": 122.69
+        },
+        {
+          "text": "that",
+          "t_start": 122.69,
+          "t_end": 123.08
+        },
+        {
+          "text": "Trump",
+          "t_start": 123.08,
+          "t_end": 123.48
+        },
+        {
+          "text": "sales",
+          "t_start": 123.48,
+          "t_end": 123.97
+        },
+        {
+          "text": "tax",
+          "t_start": 123.97,
+          "t_end": 124.28
+        },
+        {
+          "text": "would",
+          "t_start": 124.28,
+          "t_end": 124.61
+        },
+        {
+          "text": "actually",
+          "t_start": 124.61,
+          "t_end": 124.92
+        },
+        {
+          "text": "result",
+          "t_start": 124.92,
+          "t_end": 125.48
+        },
+        {
+          "text": "for",
+          "t_start": 125.48,
+          "t_end": 125.81
+        },
+        {
+          "text": "middle",
+          "t_start": 125.81,
+          "t_end": 126.12
+        },
+        {
+          "text": "class",
+          "t_start": 126.12,
+          "t_end": 126.44
+        },
+        {
+          "text": "families",
+          "t_start": 126.44,
+          "t_end": 127.01
+        },
+        {
+          "text": "in",
+          "t_start": 127.1,
+          "t_end": 127.42
+        },
+        {
+          "text": "about",
+          "t_start": 127.42,
+          "t_end": 127.82
+        },
+        {
+          "text": "$4,000",
+          "t_start": 127.82,
+          "t_end": 129.02
+        },
+        {
+          "text": "more",
+          "t_start": 129.02,
+          "t_end": 129.5
+        },
+        {
+          "text": "a",
+          "t_start": 129.5,
+          "t_end": 129.82
+        },
+        {
+          "text": "year",
+          "t_start": 129.82,
+          "t_end": 130.38
+        },
+        {
+          "text": "because",
+          "t_start": 130.62,
+          "t_end": 131.26
+        },
+        {
+          "text": "of",
+          "t_start": 131.26,
+          "t_end": 131.5
+        },
+        {
+          "text": "his",
+          "t_start": 131.5,
+          "t_end": 131.9
+        },
+        {
+          "text": "policies",
+          "t_start": 131.9,
+          "t_end": 132.46
+        }
+      ]
+    },
+    {
+      "t_start": 132.46,
+      "t_end": 140.14,
+      "speaker_id": "harris",
+      "role": "speaker",
+      "text": "and his ideas about what should be the backs of middle class people paying for tax cuts for billionaires.",
+      "words": [
+        {
+          "text": "and",
+          "t_start": 132.46,
+          "t_end": 132.78
+        },
+        {
+          "text": "his",
+          "t_start": 132.78,
+          "t_end": 133.02
+        },
+        {
+          "text": "ideas",
+          "t_start": 133.02,
+          "t_end": 133.74
+        },
+        {
+          "text": "about",
+          "t_start": 133.9,
+          "t_end": 134.38
+        },
+        {
+          "text": "what",
+          "t_start": 134.38,
+          "t_end": 134.78
+        },
+        {
+          "text": "should",
+          "t_start": 134.78,
+          "t_end": 135.1
+        },
+        {
+          "text": "be",
+          "t_start": 135.1,
+          "t_end": 135.58
+        },
+        {
+          "text": "the",
+          "t_start": 135.58,
+          "t_end": 136.22
+        },
+        {
+          "text": "backs",
+          "t_start": 136.22,
+          "t_end": 136.62
+        },
+        {
+          "text": "of",
+          "t_start": 136.62,
+          "t_end": 136.86
+        },
+        {
+          "text": "middle",
+          "t_start": 136.86,
+          "t_end": 137.18
+        },
+        {
+          "text": "class",
+          "t_start": 137.18,
+          "t_end": 137.42
+        },
+        {
+          "text": "people",
+          "t_start": 137.42,
+          "t_end": 137.82
+        },
+        {
+          "text": "paying",
+          "t_start": 137.82,
+          "t_end": 138.46
+        },
+        {
+          "text": "for",
+          "t_start": 138.46,
+          "t_end": 138.78
+        },
+        {
+          "text": "tax",
+          "t_start": 138.78,
+          "t_end": 139.02
+        },
+        {
+          "text": "cuts",
+          "t_start": 139.02,
+          "t_end": 139.34
+        },
+        {
+          "text": "for",
+          "t_start": 139.34,
+          "t_end": 139.5
+        },
+        {
+          "text": "billionaires.",
+          "t_start": 139.5,
+          "t_end": 140.14
+        }
+      ]
+    },
+    {
+      "t_start": 140.83,
+      "t_end": 142.59,
+      "speaker_id": "moderator",
+      "role": "moderator",
+      "text": "President Trump, I'll give you two minutes.",
+      "words": [
+        {
+          "text": "President",
+          "t_start": 140.83,
+          "t_end": 141.24
+        },
+        {
+          "text": "Trump,",
+          "t_start": 141.24,
+          "t_end": 141.63
+        },
+        {
+          "text": "I'll",
+          "t_start": 141.63,
+          "t_end": 141.72
+        },
+        {
+          "text": "give",
+          "t_start": 141.72,
+          "t_end": 141.8
+        },
+        {
+          "text": "you",
+          "t_start": 141.8,
+          "t_end": 141.95
+        },
+        {
+          "text": "two",
+          "t_start": 141.95,
+          "t_end": 142.03
+        },
+        {
+          "text": "minutes.",
+          "t_start": 142.03,
+          "t_end": 142.59
+        }
+      ]
+    },
+    {
+      "t_start": 142.59,
+      "t_end": 144.59,
+      "speaker_id": "trump",
+      "role": "speaker",
+      "text": "First of all, I have no sales tax.",
+      "words": [
+        {
+          "text": "First",
+          "t_start": 142.59,
+          "t_end": 142.99
+        },
+        {
+          "text": "of",
+          "t_start": 142.99,
+          "t_end": 143.16
+        },
+        {
+          "text": "all,",
+          "t_start": 143.16,
+          "t_end": 143.31
+        },
+        {
+          "text": "I",
+          "t_start": 143.31,
+          "t_end": 143.47
+        },
+        {
+          "text": "have",
+          "t_start": 143.47,
+          "t_end": 143.63
+        },
+        {
+          "text": "no",
+          "t_start": 143.63,
+          "t_end": 143.88
+        },
+        {
+          "text": "sales",
+          "t_start": 143.88,
+          "t_end": 144.27
+        },
+        {
+          "text": "tax.",
+          "t_start": 144.27,
+          "t_end": 144.59
+        }
+      ]
+    },
+    {
+      "t_start": 144.59,
+      "t_end": 145.88,
+      "speaker_id": "trump",
+      "role": "speaker",
+      "text": "That's an incorrect statement.",
+      "words": [
+        {
+          "text": "That's",
+          "t_start": 144.59,
+          "t_end": 144.83
+        },
+        {
+          "text": "an",
+          "t_start": 144.83,
+          "t_end": 144.99
+        },
+        {
+          "text": "incorrect",
+          "t_start": 144.99,
+          "t_end": 145.4
+        },
+        {
+          "text": "statement.",
+          "t_start": 145.4,
+          "t_end": 145.88
+        }
+      ]
+    },
+    {
+      "t_start": 145.88,
+      "t_end": 146.75,
+      "speaker_id": "trump",
+      "role": "speaker",
+      "text": "She knows that.",
+      "words": [
+        {
+          "text": "She",
+          "t_start": 145.88,
+          "t_end": 146.03
+        },
+        {
+          "text": "knows",
+          "t_start": 146.03,
+          "t_end": 146.19
+        },
+        {
+          "text": "that.",
+          "t_start": 146.19,
+          "t_end": 146.75
+        }
+      ]
+    }
+  ]
+}

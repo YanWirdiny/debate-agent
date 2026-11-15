@@ -16,6 +16,7 @@ Routes: GET /health, /clips, /sessions, /report/{session_id} (JSON), /report/{se
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -195,6 +196,29 @@ def create_app(manager: SessionManager | None = None) -> FastAPI:
         if clip is None or not clip.video_path or not Path(clip.video_path).is_file():
             raise HTTPException(status_code=404, detail=f"no video for clip {clip_id}")
         return FileResponse(clip.video_path, media_type="video/mp4")
+
+    def _source(clip_id: str) -> dict:
+        """data/clips/<id>/source.json (scripts/align_clip.py): where the trimmed clip sits in the original."""
+        if not any(c.clip_id == clip_id for c in ingest.list_clips()):
+            raise HTTPException(status_code=404, detail=f"unknown clip {clip_id}")
+        path = ingest.CLIPS_DIR / clip_id / "source.json"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail=f"no original for clip {clip_id}")
+        return json.loads(path.read_text())
+
+    @app.get("/clips/{clip_id}/source")
+    async def clip_source(clip_id: str) -> dict:
+        """Cut list (trimmed -> original time), the viewer's window, and captions for the cut regions."""
+        return _source(clip_id)
+
+    @app.get("/clips/{clip_id}/original")
+    async def clip_original(clip_id: str) -> FileResponse:
+        """The untrimmed original the audience can watch (range requests supported)."""
+        root = ingest.CLIPS_DIR.resolve()
+        path = (root / str(_source(clip_id).get("original", {}).get("path", ""))).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise HTTPException(status_code=404, detail=f"original video for clip {clip_id} not found")
+        return FileResponse(path, media_type="video/mp4")
 
     @app.get("/state")
     async def state() -> dict:

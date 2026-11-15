@@ -47,18 +47,19 @@ export function useClipTime(ms = 250, delay = 0): number | null {
  * The time the viewer is watching: the video's own position while it plays (captions then follow
  * the picture exactly, even after a stall), else the delayed server clock.
  */
-export function useDisplayTime(video: HTMLVideoElement | null, delay: number, ms = 100): number | null {
+export function useDisplayTime(video: HTMLVideoElement | null, delay: number, ms = 100, offset = 0): number | null {
   const clock = useClipTime(ms, delay);
   if (clock == null) return null;
   if (video && !video.paused && !video.ended && video.readyState >= 2) return video.currentTime;
-  return clock;
+  return clock + offset;
 }
 
 /**
  * Keep a <video> on the server's clip clock minus `delay`: hold at 0 until the delayed clock starts,
  * then play, and every 5 s seek if drift > 300 ms. Speeds other than 1x (test replays) set the rate.
+ * `offset`: where clip time 0 is in this video (original mode: the window start); `end`: pause there.
  */
-export function useVideoSync(video: HTMLVideoElement | null, enabled = true, delay = 0): void {
+export function useVideoSync(video: HTMLVideoElement | null, enabled = true, delay = 0, offset = 0, end = Infinity): void {
   const t0 = useView((s) => s.t0Wall);
   const speed = useView((s) => s.speed);
   useEffect(() => {
@@ -67,12 +68,17 @@ export function useVideoSync(video: HTMLVideoElement | null, enabled = true, del
     const sync = () => {
       const now = clipTimeNow(t0, speed);
       if (now == null) return;
-      const target = now - delay * speed;
-      if (target < 0) {
+      const clip = now - delay * speed;
+      const target = offset + clip;
+      if (clip < 0) {
         video.pause();
-        video.currentTime = 0;
+        video.currentTime = offset;
         window.clearTimeout(wait);
-        wait = window.setTimeout(sync, (-target / speed) * 1000); // start exactly when the delay elapses
+        wait = window.setTimeout(sync, (-clip / speed) * 1000); // start exactly when the delay elapses
+        return;
+      }
+      if (target >= end) {
+        video.pause();
         return;
       }
       if (Number.isFinite(video.duration) && target > video.duration) return;
@@ -82,9 +88,14 @@ export function useVideoSync(video: HTMLVideoElement | null, enabled = true, del
     };
     sync();
     const id = window.setInterval(sync, DRIFT_CHECK_MS);
+    const stopAtEnd = () => {
+      if (video.currentTime >= end) video.pause(); // exact, not on the 5 s drift check
+    };
+    video.addEventListener("timeupdate", stopAtEnd);
     return () => {
+      video.removeEventListener("timeupdate", stopAtEnd);
       window.clearInterval(id);
       window.clearTimeout(wait);
     };
-  }, [video, enabled, t0, speed, delay]);
+  }, [video, enabled, t0, speed, delay, offset, end]);
 }
