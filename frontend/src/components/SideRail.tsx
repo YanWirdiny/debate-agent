@@ -11,22 +11,22 @@ interface Props {
 /** Flags whose line already left the caption bar (late verdicts), newest first, with timestamp. */
 export function SideRail({ flags, segments, removed }: Props) {
   return (
-    <aside className="flex h-full flex-col overflow-hidden rounded-xl bg-zinc-900/80">
-      <h2 className="border-b border-zinc-800 px-4 py-3 text-sm font-semibold tracking-wide text-zinc-400 uppercase">Flags</h2>
+    <aside className="flex h-full flex-col overflow-hidden rounded-xl bg-white/5">
+      <h2 className="border-b border-white/10 px-4 py-3 text-sm font-semibold tracking-wide text-white/50 uppercase">Flags</h2>
       <ol className="flex-1 space-y-3 overflow-y-auto p-4">
-        {flags.length === 0 && <li className="text-sm text-zinc-500">No flags yet.</li>}
+        {flags.length === 0 && <li className="text-sm text-white/40">No flags yet.</li>}
         {flags.map((a) => {
           const seg = segments[a.segment_id];
           const struck = isStruck(a, removed[a.annotation_id]);
           return (
             <li key={a.annotation_id} className={`text-sm ${struck ? "opacity-50" : ""}`}>
-              <div className="mb-1 flex items-center gap-2 text-zinc-400">
+              <div className="mb-1 flex items-center gap-2 text-white/55">
                 <FlagChip a={a} struck={struck} size="sm" align="right" />
-                <span className="font-semibold text-zinc-200">{speakerName(a.speaker_id)}</span>
+                <span className="font-semibold text-white">{speakerName(a.speaker_id)}</span>
                 <span className="tabular-nums">{fmtTime(seg?.t_start)}</span>
                 <span className="ml-auto truncate text-xs">{categoryLabel(a)}</span>
               </div>
-              <p className={`text-zinc-300 ${struck ? "line-through" : ""}`}>“{a.span_text}”</p>
+              <p className={`text-white/80 ${struck ? "line-through" : ""}`}>“{a.span_text}”</p>
             </li>
           );
         })}

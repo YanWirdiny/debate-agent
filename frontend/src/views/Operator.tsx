@@ -76,8 +76,8 @@ export function Operator() {
   useEffect(() => {
     if (conn === "open") void fetchState().then(setServer);
   }, [conn]);
-  // The operator is the only view now, so the preview carries the sound. A browser that blocks
-  // autoplay with sound gets it muted by useVideoSync; the button turns it back on (a user gesture).
+  // The preview has its own sound toggle. The audience tab is a separate window and joins with
+  // its own click. A browser that blocks autoplay with sound gets muted by useVideoSync.
   const [sound, setSound] = useState(true);
   useEffect(() => {
     if (!video) return;
@@ -160,6 +160,10 @@ export function Operator() {
               Report
             </Link>
           )}
+          {/* Named target: reuse one audience tab instead of stacking audible copies. */}
+          <a href="/audience" target="bs-audience" className="text-zinc-300 underline hover:text-zinc-100">
+            Audience view
+          </a>
           <span className={`h-2.5 w-2.5 rounded-full ${conn === "open" ? "bg-emerald-500" : "bg-amber-500"}`} title={`socket ${conn}`} />
         </span>
       </header>

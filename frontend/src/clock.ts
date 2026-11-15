@@ -66,22 +66,27 @@ export function useDisplayTime(video: HTMLVideoElement | null, delay: number, ms
 export function useVideoSync(video: HTMLVideoElement | null, enabled = true, delay = 0, offset = 0, end = Infinity): void {
   const t0 = useView((s) => s.t0Wall);
   const speed = useView((s) => s.speed);
+  const endedAt = useView((s) => s.endedAt);
   useEffect(() => {
     if (!video || !enabled || t0 == null) return;
     let wait: number | undefined;
     const sync = () => {
       const now = clipTimeNow(t0, speed);
       if (now == null) return;
-      const clip = now - delay * speed;
+      // Once the session has ended, stay on the delayed frame instead of following the wall clock.
+      const live = endedAt == null ? now : Math.min(now, endedAt);
+      const clip = live - delay * speed;
       const target = offset + clip;
+      const frozen = endedAt != null && now >= endedAt;
       if (clip < 0) {
         video.pause();
         video.currentTime = offset;
         window.clearTimeout(wait);
-        wait = window.setTimeout(sync, (-clip / speed) * 1000); // start exactly when the delay elapses
+        if (!frozen) wait = window.setTimeout(sync, (-clip / speed) * 1000); // start exactly when the delay elapses
         return;
       }
-      if (target >= end) {
+      if (target >= end || frozen) {
+        if (target < end && Math.abs(video.currentTime - target) > DRIFT_MAX_S) video.currentTime = target;
         video.pause();
         return;
       }
@@ -108,5 +113,5 @@ export function useVideoSync(video: HTMLVideoElement | null, enabled = true, del
       window.clearInterval(id);
       window.clearTimeout(wait);
     };
-  }, [video, enabled, t0, speed, delay, offset, end]);
+  }, [video, enabled, t0, speed, delay, offset, end, endedAt]);
 }

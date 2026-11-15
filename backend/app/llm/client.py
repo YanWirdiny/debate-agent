@@ -148,30 +148,59 @@ def _is_timeout(exc: BaseException) -> bool:
     return isinstance(exc, (TimeoutError, httpx.TimeoutException))
 
 
+def _configured_model(raw: str) -> str:
+    """LLM_MODEL_FAST is a comma-separated list. Spacing does not change the configuration."""
+    return ",".join(part.strip() for part in str(raw).split(",") if part.strip())
+
+
+def _cache_identity(settings: object, primary: str) -> tuple[str, str]:
+    """(provider, model) of this call's primary path.
+
+    The lookup happens before any attempt, so the key is the configured model, not whichever
+    backup answered. Groq uses the whole LLM_MODEL_FAST list (rotation stays a hit). Gemini,
+    including when LLM_PROVIDER=gemini makes it the hot-path primary, uses LLM_MODEL_GEMINI.
+    """
+    provider = "gemini" if primary == "groq" and getattr(settings, "llm_provider", "groq") == "gemini" else primary
+    if provider == "groq":
+        model = _configured_model(getattr(settings, "llm_model_fast", ""))
+    else:
+        model = str(getattr(settings, "llm_model_gemini", "") or "").strip()
+    return provider, model
+
+
 async def _call(prompt_id: str, variables: dict, schema: type[BaseModel], timeout: float, primary: str, grounded: bool = False, cache_name: str | None = None) -> LLMResult:
-    """Analysis cache first (app/llm/cache.py); on a miss the models, and a valid answer is stored."""
+    """Analysis cache first (app/llm/cache.py); on a miss the models, and a primary answer is stored.
+
+    Fallback answers are not stored. The first row for a key is kept, so a weak backup would
+    otherwise be served forever after the primary model is healthy again.
+    """
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be positive and finite")
     if not getattr(_settings(), "llm_cache", False):
-        return await _call_models(prompt_id, variables, schema, timeout, primary, grounded, cache_name)
+        result, _from_fallback = await _call_models(prompt_id, variables, schema, timeout, primary, grounded, cache_name)
+        return result
+    settings = _settings()
     _, prompt_hash = _prompt(prompt_id)
-    key = cache_key(prompt_id, prompt_hash, schema.__name__, grounded, variables)
+    provider, model = _cache_identity(settings, primary)
+    key = cache_key(prompt_id, prompt_hash, schema.__name__, grounded, variables, model=model, provider=provider)
     hit = CACHE.get(key)
     if hit is not None:
-        data, model_id, provider = hit
+        data, model_id, hit_provider = hit
         try:
             data = schema.model_validate(data).model_dump(mode="json")
         except ValidationError:
             hit = None  # schema changed since it was stored: ask the models again
         else:
             log.info("llm cache hit prompt=%s model=%s", prompt_id, model_id)
-            return LLMResult(data=data, model_id=model_id, prompt_hash=prompt_hash, provider=provider, usage={})
-    result = await _call_models(prompt_id, variables, schema, timeout, primary, grounded, cache_name)
-    CACHE.put(key, prompt_id, result.data, result.model_id, result.provider)
+            return LLMResult(data=data, model_id=model_id, prompt_hash=prompt_hash, provider=hit_provider, usage={})
+    result, from_fallback = await _call_models(prompt_id, variables, schema, timeout, primary, grounded, cache_name)
+    if not from_fallback:
+        CACHE.put(key, prompt_id, result.data, result.model_id, result.provider)
     return result
 
 
-async def _call_models(prompt_id: str, variables: dict, schema: type[BaseModel], timeout: float, primary: str, grounded: bool = False, cache_name: str | None = None) -> LLMResult:
+async def _call_models(prompt_id: str, variables: dict, schema: type[BaseModel], timeout: float, primary: str, grounded: bool = False, cache_name: str | None = None) -> tuple[LLMResult, bool]:
+    """(result, from_fallback). from_fallback is true when the backup provider answered."""
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be positive and finite")
     prompt, prompt_hash = _prompt(prompt_id)
@@ -317,7 +346,7 @@ async def _call_models(prompt_id: str, variables: dict, schema: type[BaseModel],
                 if remaining <= 0:
                     break
                 try:
-                    return await invoke(primary, model, remaining)
+                    return await invoke(primary, model, remaining), False
                 except Exception as exc:
                     warn_attempt(primary, model, exc)
                     if _is_timeout(exc) or attempt == 1:
@@ -327,7 +356,7 @@ async def _call_models(prompt_id: str, variables: dict, schema: type[BaseModel],
                 model = model_for(fallback)
                 if model:
                     try:
-                        return await invoke(fallback, model, budget_left)
+                        return await invoke(fallback, model, budget_left), True
                     except Exception as exc:
                         warn_attempt(fallback, model, exc)
                 else:

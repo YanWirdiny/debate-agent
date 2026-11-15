@@ -42,7 +42,13 @@ export function Audience() {
       if (view.sessionId !== null && st.session_id !== null && view.sessionId !== st.session_id) {
         view.reset();
       }
-      setSession({ clipId: st.clip_id, sessionId: st.session_id, t0Wall: st.t0_wall, speed: st.speed });
+      setSession({
+        clipId: st.clip_id,
+        sessionId: st.session_id,
+        t0Wall: st.t0_wall,
+        speed: st.speed,
+        endedAt: st.ended_clip_time ?? null,
+      });
     }
     if (st?.clip_id && wantOriginalRef.current) setSource(await fetchSource(st.clip_id)); // retried on every load/start
   });
@@ -117,7 +123,7 @@ export function Audience() {
   return (
     <div className="flex min-h-screen flex-col gap-4 bg-black p-4 text-white lg:h-screen lg:flex-row">
       <main className="flex min-w-0 flex-1 flex-col gap-4">
-        <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-zinc-950">
+        <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-black">
           {clipId && videoOk ? (
             <video
               ref={setVideo}
@@ -129,7 +135,7 @@ export function Audience() {
               onError={() => setVideoOk(false)}
             />
           ) : (
-            <p className="p-8 text-center text-zinc-500">{clipId ? "Video unavailable for this clip; captions continue below." : "Waiting for the operator to load a clip."}</p>
+            <p className="p-8 text-center text-white/60">{clipId ? "Video unavailable for this clip; captions continue below." : "Waiting for the operator to load a clip."}</p>
           )}
           {!joined && (
             <button
@@ -138,7 +144,7 @@ export function Audience() {
               className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 text-2xl font-semibold"
             >
               Click to join with sound
-              <span className="text-sm font-normal text-zinc-400">Playback follows the operator.</span>
+              <span className="text-sm font-normal text-white/60">Playback follows the operator.</span>
             </button>
           )}
           {conn !== "open" && (
@@ -171,17 +177,17 @@ function AgentLead({ source, displayTime }: { source: ClipSource; displayTime: n
   const cut = inCut(displayTime, source);
   return (
     <div className="absolute top-3 left-3 flex flex-col items-start gap-1 text-xs">
-      <span className="rounded bg-black/70 px-2 py-1 font-mono text-emerald-300">
+      <span className="rounded bg-black/70 px-2 py-1 font-mono text-green-300">
         {agentDone ? "Agent finished the excerpt" : lead > 0.5 ? `Agent is ${Math.round(lead)} s ahead` : "Agent is live"}
       </span>
-      {cut && <span className="rounded bg-black/70 px-2 py-1 text-zinc-300">Outside the analysed excerpt · captions only</span>}
+      {cut && <span className="rounded bg-black/70 px-2 py-1 text-white/75">Outside the analysed excerpt · captions only</span>}
     </div>
   );
 }
 
 function Legend() {
   return (
-    <p className="text-center text-xs text-zinc-500">
+    <p className="text-center text-xs text-white/50">
       Flags appear only when backed by a cited source (or, for fallacies, a quoted span). Tap a letter for the evidence. F factual error ·
       M misleading · D data misuse · L logical fallacy · C differs from prior statement · V verified
     </p>

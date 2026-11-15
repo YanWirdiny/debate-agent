@@ -82,7 +82,7 @@ export function CaptionBar({ lines, bySegment, removed, displayTime }: Props) {
   const shown = reachedLines(lines, displayTime).slice(-CAPTION_LINES);
   return (
     <div className="flex min-h-[7.5rem] flex-col justify-end gap-2 rounded-xl bg-black/85 px-5 py-4 text-xl leading-relaxed sm:text-2xl" aria-live="off">
-      {shown.length === 0 && <p className="text-zinc-600">{displayTime == null ? "Captions appear here when the debate starts." : " "}</p>}
+      {shown.length === 0 && <p className="text-white/40">{displayTime == null ? "Captions appear here when the debate starts." : " "}</p>}
       {shown.map((l, i) => {
         const mod = l.role === "moderator";
         const cut = displayTime == null ? l.text.length : revealedChars(l, displayTime);
@@ -90,10 +90,10 @@ export function CaptionBar({ lines, bySegment, removed, displayTime }: Props) {
         const speaking = i === shown.length - 1 && (cut < l.text.length || !l.final);
         const anns = l.final ? (bySegment[l.segment_id] ?? []).filter((a) => a.span_char_end <= cut) : [];
         return (
-          <p key={l.segment_id} className={mod ? "text-zinc-400" : "text-white"}>
-            <span className={`mr-2 font-semibold ${mod ? "text-zinc-500" : "text-amber-200"}`}>{speakerName(l.speaker_id)}:</span>
+          <p key={l.segment_id} className={mod ? "text-white/55" : "text-white"}>
+            <span className={`mr-2 font-semibold ${mod ? "text-white/45" : "text-yellow-200"}`}>{speakerName(l.speaker_id)}:</span>
             {l.unchecked && !mod && (
-              <span className="mr-2 rounded border border-zinc-600 px-1.5 py-0.5 align-middle text-xs font-normal text-zinc-400" title="Outside the analysed excerpt: captions only, no fact-check">
+              <span className="mr-2 rounded border border-white/30 px-1.5 py-0.5 align-middle text-xs font-normal text-white/60" title="Outside the analysed excerpt: captions only, no fact-check">
                 not fact-checked
               </span>
             )}

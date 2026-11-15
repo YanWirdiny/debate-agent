@@ -80,8 +80,12 @@ export function RecordedDemo() {
   );
 }
 
-/** The operator console under the site nav and the demo tabs. */
+/** The operator console under the site nav and the demo tabs.
+ *  Shows every flag (candidate, pending, killed), so it stays labeled as the operator, not an audience. */
 export function LiveDemo() {
+  useEffect(() => {
+    document.title = "Operator · BS Subtitles";
+  }, []);
   return (
     <div style={{ "--chrome": "calc(5.75rem + 1px)" } as React.CSSProperties}>
       <Nav />
