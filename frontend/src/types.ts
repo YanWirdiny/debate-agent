@@ -135,6 +135,22 @@ export interface PendingMessage {
   reason: "timeout" | "error";
 }
 
+/** Someone in a live room. speaker_id is a slug ("alice"); name is shown on captions. */
+export interface Participant {
+  speaker_id: string;
+  name: string;
+  role: Role;
+}
+
+/** Operator only: who each Deepgram voice is ("0" -> speaker_id), and the manual override. */
+export interface VoicesMessage {
+  type: "voices";
+  participants: Participant[];
+  voices: Record<string, string>;
+  override: string | null;
+  topic?: string | null;
+}
+
 export type ServerMessage =
   | SegmentMessage
   | AnnotationMessage
@@ -146,7 +162,8 @@ export type ServerMessage =
   | RemovalMessage
   | BannerMessage
   | PendingMessage
-  | PartialMessage;
+  | PartialMessage
+  | VoicesMessage;
 
 export interface LoadMessage {
   type: "load";
@@ -163,4 +180,26 @@ export interface KillMessage {
   annotation_id: string;
 }
 
-export type ClientMessage = LoadMessage | StartMessage | KillMessage;
+export interface LoadRoomMessage {
+  type: "load_room";
+  participants: Participant[];
+  /** Typed by the operator: what the debate is about (prefetches sources, tells the lanes). */
+  topic?: string | null;
+}
+
+export interface AssignVoiceMessage {
+  type: "assign_voice";
+  voice: number;
+  speaker_id: string;
+}
+
+export interface SpeakerOverrideMessage {
+  type: "speaker_override";
+  speaker_id: string | null;
+}
+
+export interface StopMessage {
+  type: "stop";
+}
+
+export type ClientMessage = LoadMessage | StartMessage | KillMessage | LoadRoomMessage | AssignVoiceMessage | SpeakerOverrideMessage | StopMessage;

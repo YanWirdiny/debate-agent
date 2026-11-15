@@ -10,6 +10,7 @@ import type {
   RemovalStatus,
   Segment,
   ServerMessage,
+  VoicesMessage,
 } from "./types";
 
 export type ConnState = "connecting" | "open" | "closed";
@@ -34,6 +35,8 @@ export interface ViewState {
   endedAt: number | null;
   /** Clip length in seconds, if known: clocks never count past it. */
   duration: number | null;
+  /** Live room only: participants, who each Deepgram voice is, and the manual override. */
+  voices: VoicesMessage | null;
   segments: Segment[];
   /** The sentence being spoken right now (not final yet). */
   partial: PartialMessage | null;
@@ -47,7 +50,7 @@ export interface ViewState {
   metrics: MetricsSnapshot | null;
   banners: Banner[];
   setConn: (c: ConnState) => void;
-  setSession: (s: { sessionId?: string | null; clipId?: string | null; t0Wall?: number | null; speed?: number; endedAt?: number | null; duration?: number | null }) => void;
+  setSession: (s: { sessionId?: string | null; clipId?: string | null; t0Wall?: number | null; speed?: number; endedAt?: number | null; duration?: number | null; voices?: VoicesMessage | null }) => void;
   apply: (m: ServerMessage) => void;
   dismissBanner: (id: number) => void;
   reset: () => void;
@@ -74,6 +77,7 @@ export const useView = create<ViewState>((set) => ({
   speed: 1,
   endedAt: null,
   duration: null,
+  voices: null,
   banners: [],
   ...empty,
   setConn: (conn) => set({ conn }),
@@ -85,7 +89,7 @@ export const useView = create<ViewState>((set) => ({
       switch (m.type) {
         case "ready":
           // A new session was loaded: clear the previous run.
-          return { ...empty, sessionId: m.session_id, t0Wall: null, endedAt: null, banners: [] };
+          return { ...empty, sessionId: m.session_id, t0Wall: null, endedAt: null, voices: null, banners: [] };
         case "started":
           return { t0Wall: m.t0_wall, endedAt: null };
         case "ended":
@@ -120,6 +124,8 @@ export const useView = create<ViewState>((set) => ({
         }
         case "metrics":
           return { metrics: m.data };
+        case "voices":
+          return { voices: m };
         case "banner": {
           const b: Banner = { id: ++bannerSeq, level: m.level, text: m.text, at: Date.now() };
           return { banners: [...st.banners.filter((x) => x.text !== m.text), b].slice(-MAX_BANNERS) };

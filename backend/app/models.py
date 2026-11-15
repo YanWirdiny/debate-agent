@@ -261,8 +261,43 @@ class KillMessage(ContractModel):
     type: Literal["kill"] = "kill"
     annotation_id: str
 
-ServerMessage = Annotated[SegmentMessage | AnnotationMessage | AnnotationUpdateMessage | MetricsMessage | ReadyMessage | StartedMessage | EndedMessage | RemovalMessage | BannerMessage | PendingMessage | PartialMessage, Field(discriminator="type")]
-ClientMessage = Annotated[LoadMessage | StartMessage | KillMessage, Field(discriminator="type")]
+class Participant(ContractModel):
+    """Someone in a live room. speaker_id is a slug ("alice"); name is shown on captions."""
+    speaker_id: str = Field(pattern=r"^[a-z0-9_]{1,32}$")
+    name: str = Field(min_length=1, max_length=60)
+    role: Role = "speaker"
+
+class LoadRoomMessage(ContractModel):
+    """Operator sets up a live room (mic in the browser); server warms up and replies `ready`."""
+    type: Literal["load_room"] = "load_room"
+    participants: list[Participant] = Field(min_length=1, max_length=4)
+    topic: str | None = Field(default=None, max_length=200)  # typed by the operator: what the debate is about
+
+class AssignVoiceMessage(ContractModel):
+    """Operator: Deepgram's voice N is this participant."""
+    type: Literal["assign_voice"] = "assign_voice"
+    voice: int = Field(ge=0, le=15)
+    speaker_id: str
+
+class SpeakerOverrideMessage(ContractModel):
+    """Operator keys 1 / 2 / M: everything heard from now on is this participant. null = automatic."""
+    type: Literal["speaker_override"] = "speaker_override"
+    speaker_id: str | None
+
+class StopMessage(ContractModel):
+    """Operator ends the session (a live room has no end of clip)."""
+    type: Literal["stop"] = "stop"
+
+class VoicesMessage(ContractModel):
+    """Operator only: who each Deepgram voice is, and the manual override if one is set."""
+    type: Literal["voices"] = "voices"
+    participants: list[Participant]
+    voices: dict[str, str]
+    override: str | None
+    topic: str | None = None
+
+ServerMessage = Annotated[SegmentMessage | AnnotationMessage | AnnotationUpdateMessage | MetricsMessage | ReadyMessage | StartedMessage | EndedMessage | RemovalMessage | BannerMessage | PendingMessage | PartialMessage | VoicesMessage, Field(discriminator="type")]
+ClientMessage = Annotated[LoadMessage | StartMessage | KillMessage | LoadRoomMessage | AssignVoiceMessage | SpeakerOverrideMessage | StopMessage, Field(discriminator="type")]
 
 def segment_id(session_id: str, seq: int) -> str:
     return f"{session_id}:{seq}"

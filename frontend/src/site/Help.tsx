@@ -37,6 +37,14 @@ const STEPS = [
   ["Open the report", "When the clip ends, Report shows every finding, built only from the event log."],
 ];
 
+const ROOM_STEPS = [
+  ["Open Demo → Room", "Type the debate topic and the two debaters' names (and a moderator, if there is one). Pick the microphone."],
+  ["Press Start", "Allow microphone access when the browser asks. Warm-up takes a few seconds, then it listens."],
+  ["Check the names in the first minute", "Voices are told apart by sound. The first voice heard goes to the moderator (if you named one), then to the debaters in order."],
+  ["Fix a wrong name", "Press 1 or 2 (M for the moderator) while that person talks; 0 goes back to automatic. Or reassign a voice in the side panel."],
+  ["Press Stop", "The last sentence is finished, the clock stops, and the report is ready."],
+];
+
 const FAQ = [
   ["Why does a line say “pending”?", "One of its checks ran out of time or failed. The sentence is shown without a flag rather than with a guess."],
   ["Why are some lines gray?", "Moderator lines. They set the topic but are never fact-checked."],
@@ -130,6 +138,30 @@ export function Help() {
               </li>
             ))}
           </ol>
+        </section>
+
+        <section className="border-t border-ink/15 py-14">
+          <div className="flex flex-wrap items-baseline justify-between gap-4">
+            <h2 className="display text-4xl md:text-6xl">Running a room session</h2>
+            <Link to="/demo/room" className="pill-yale">
+              Open the room
+            </Link>
+          </div>
+          <p className="lead mt-6 max-w-3xl">Two people debating live in front of the laptop. One microphone is enough.</p>
+          <ol className="mt-8 grid gap-4 md:grid-cols-2">
+            {ROOM_STEPS.map(([t, d], i) => (
+              <li key={t} className="rounded-2xl bg-almond p-5">
+                <p className="font-mono text-sm text-ink/55">0{i + 1}</p>
+                <p className="mt-1 font-semibold">{t}</p>
+                <p className="mt-1 text-sm text-ink/65">{d}</p>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-6 max-w-3xl text-sm text-ink/65">
+            Good to know: each sentence gets up to 7 seconds of checking in a room, so fewer lines end up unchecked. Voices can be
+            mixed up when people talk over each other. Without a prepared claim bank for the speakers, claims are checked on the web,
+            so expect fewer verified flags than on a prepared clip. The microphone only works on this computer (localhost) or over HTTPS.
+          </p>
         </section>
 
         <section className="border-t border-ink/15 py-14">

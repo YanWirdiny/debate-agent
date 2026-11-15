@@ -6,6 +6,7 @@ lanes only read frozen `view_for()` snapshots. Claim records arrive through `emi
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 import logging
 import time
 from collections import deque
@@ -32,6 +33,8 @@ from app.models import (
     PrefetchJob,
     ClaimRecord,
     Clip,
+    Participant,
+    VoicesMessage,
     Lane,
     LaneContext,
     PendingMessage,
@@ -62,8 +65,16 @@ ASYNC_WORKERS = 2
 # Groq's free tier use 2.5, and with LLM_PROVIDER=gemini (Gemini first, ~2-3 s) use 6-10.
 # Read from the environment or backend/.env.
 LANE_TIMEOUT_S = env_float("LANE_TIMEOUT_S", 1.2)
+# A live room has no broadcast delay to hide behind, and the sentence stays on screen: a generous
+# budget (start at 7 s, tighten as p95 allows) means fewer "pending" lines. Settable in .env.
+ROOM_LANE_TIMEOUT_S = env_float("ROOM_LANE_TIMEOUT_S", 7.0)
+# The lane budget of the session running this lane (set by SessionRunner._lane). Lanes read it at
+# call time to size their model calls, so a room's 7 s budget reaches them without a new parameter.
+LANE_BUDGET_S: ContextVar[float] = ContextVar("LANE_BUDGET_S", default=LANE_TIMEOUT_S)
+MIC_QUEUE_CHUNKS = 100  # ~10 s of 100 ms mic chunks; older audio is dropped if Deepgram falls behind
+MIC_MAX_RECONNECTS = 10
 
-Source = Literal["replay", "deepgram", "events"]
+Source = Literal["replay", "deepgram", "events", "mic"]
 
 
 class SessionContext:
@@ -237,6 +248,8 @@ class SessionRunner:
         runs_dir: Path | None = None,
         drain_timeout: float = ASYNC_JOB_TIMEOUT_S + 5,
         metrics_interval: float = 1.0,
+        participants: list[Participant] | None = None,
+        topic: str | None = None,
     ) -> None:
         self.session_id = session_id
         self.clip_id = clip_id
@@ -257,6 +270,15 @@ class SessionRunner:
         self.metrics_interval = metrics_interval
         self.dg: ingest.DeepgramLive | None = None
         self.pump: ingest.AudioPump | None = None
+        # Live room (source="mic"): who is in the room, who each Deepgram voice is, the mic audio.
+        self.participants = list(participants or [])
+        self.topic = (topic or "").strip() or None  # room: typed by the operator at setup
+        self.live_speakers: ingest.LiveSpeakers | None = None
+        if source == "mic":
+            if not self.participants:
+                raise ValueError("a live room needs participants")
+            self.live_speakers = ingest.LiveSpeakers([(p.speaker_id, p.role) for p in self.participants])
+        self.mic_q: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=MIC_QUEUE_CHUNKS)
         self.reconnects = 0
         self.ctx = SessionContext(session_id)
         self.metrics = Metrics()
@@ -299,6 +321,10 @@ class SessionRunner:
             await self._warm_up_intel()
             if self.source == "deepgram":
                 await self._warm_up_deepgram()
+            elif self.source == "mic":
+                assert self.live_speakers is not None
+                self.segmenter = Segmenter(self.session_id, self.live_speakers)
+                self.dg = await self._open_deepgram()
         self.ready = True
         log.info("warm-up for %s done in %.1fs (intel=%s, source=%s)", self.session_id, time.monotonic() - t,
                  self.intel.name, self.source)
@@ -306,7 +332,9 @@ class SessionRunner:
         await asyncio.gather(self.operator.broadcast(msg), self.audience.broadcast(msg))
 
     def speaker_ids(self) -> list[str]:
-        """Non-moderator speakers of the clip, from the timeline (or the transcript)."""
+        """Non-moderator speakers of the clip, from the timeline (or the transcript), or the room."""
+        if self.participants:
+            return sorted(p.speaker_id for p in self.participants if p.role == "speaker")
         ids = [e.speaker_id for e in self.clip.timeline if e.role == "speaker"]
         ids += [w.speaker_id for w in self._words if w.role == "speaker" and w.speaker_id]
         return sorted(set(ids))
@@ -320,6 +348,8 @@ class SessionRunner:
                 for spk in speakers:
                     if digest := self.kb.digest(spk):
                         self.ctx.participants[spk] = digest
+            for p in self.participants:  # room: people with no dossier still get their name in prompts
+                self.ctx.participants.setdefault(p.speaker_id, SpeakerDigest(speaker_id=p.speaker_id, name=p.name))
             await self.intel.warm_up(self.kb, speakers)  # type: ignore[arg-type]
         except NotImplementedError as e:
             raise ValueError(f"INTEL={self.intel.name}: an intel module is not implemented; use INTEL=fake") from e
@@ -348,7 +378,8 @@ class SessionRunner:
         self._recorded = events
 
     async def _open_deepgram(self) -> ingest.DeepgramLive:
-        dg = ingest.DeepgramLive(self.deepgram_key, url=self.deepgram_url)
+        params = ingest.ROOM_PARAMS if self.source == "mic" else None
+        dg = ingest.DeepgramLive(self.deepgram_key, url=self.deepgram_url, params=params)
         try:
             await dg.connect()
         except websockets.InvalidHandshake as e:  # e.g. HTTP 401 for a bad key
@@ -367,7 +398,8 @@ class SessionRunner:
         self.aggregator.speed = self.speed
         self.writer.put("session_start", {"session_id": self.session_id, "clip_id": self.clip_id, "t0_wall": self.t0_wall,
                                           "source": self.source, "intel": self.intel.name,
-                                          "participants": self.speaker_ids(), "replay_of": self.replay_session_id or None})
+                                          "participants": self.speaker_ids(), "replay_of": self.replay_session_id or None,
+                                          **({"topic": self.topic} if self.topic else {})})
         started = StartedMessage(t0_wall=self.t0_wall)
         await asyncio.gather(self.operator.broadcast(started), self.audience.broadcast(started))
         if self.source == "replay":
@@ -378,6 +410,13 @@ class SessionRunner:
         if self.intel.name == "bank" and self.source != "events":
             await self.operator.broadcast(BannerMessage(
                 level="info", text="Bank-only mode: claims + consistency; no fallacy lane, no web verdicts (U stays U)"))
+        if self.topic and self.source == "mic":
+            # The typed topic does what a moderator's question does: picks the KB topic, prefetches
+            # sourced background (Gemini + Search) for it, and tells every lane what the debate is about.
+            self.ctx.rolling_summary = self.ctx.rolling_summary or f"Debate topic: {self.topic}."
+            await self._on_question(Segment(
+                segment_id=f"{self.session_id}:topic", session_id=self.session_id, speaker_id="moderator", role="moderator",
+                text=self.topic, t_start=0.0, t_end=0.0, stt_confidence=1.0, low_conf_words=[]))
         self._db_task(dbm.save_session, self.session_id, clip_id=self.clip_id, source=self.source, intel=self.intel.name,
                       t0_wall=self.t0_wall, speed=self.speed, replay_of=self.replay_session_id or None)
         self._tasks = [
@@ -395,6 +434,17 @@ class SessionRunner:
         await self._done.wait()
 
     async def stop(self) -> None:
+        if self.source == "mic" and self.t0_wall is not None and not self._finishing:
+            # A room ends when the operator says so: let Deepgram flush the last sentence first.
+            while not self.mic_q.empty():
+                self.mic_q.get_nowait()
+            self.mic_q.put_nowait(None)
+            source = next((t for t in self._tasks if t.get_name() == "source"), None)
+            if source is not None:
+                try:
+                    await asyncio.wait_for(asyncio.shield(source), FINAL_RESULTS_TIMEOUT_S + 2)
+                except (TimeoutError, Exception):
+                    pass
         for t in self._tasks:
             if t.get_name() == "source" and not t.done():
                 t.cancel()
@@ -464,6 +514,8 @@ class SessionRunner:
                 await self._source_deepgram()
             elif self.source == "events":
                 await self._source_events()
+            elif self.source == "mic":
+                await self._source_mic()
             else:
                 await self._replay_from(0.0)
             await self.on_utterance_end()
@@ -474,6 +526,89 @@ class SessionRunner:
         assert self.t0_wall is not None
         words = [w for w in self._words if w.t_end > t]
         await ingest.replay_words(words, self.t0_wall, self.on_words, speed=self.speed)
+
+    # --- live room ---
+
+    def feed_mic(self, data: bytes) -> None:
+        """16 kHz mono PCM16 from the browser. Ignored before start and after stop. If Deepgram falls
+        behind, the oldest audio is dropped: a live caption must not lag further and further."""
+        if self.source != "mic" or self.t0_wall is None or self._finishing or not data:
+            return
+        if self.mic_q.full():
+            self.mic_q.get_nowait()
+        self.mic_q.put_nowait(data)
+
+    def voices_message(self) -> VoicesMessage | None:
+        if self.live_speakers is None:
+            return None
+        ls = self.live_speakers
+        return VoicesMessage(participants=self.participants, voices={str(v): s for v, s in sorted(ls.voices.items())},
+                             override=ls.override, topic=self.topic)
+
+    async def announce_voices(self) -> None:
+        msg = self.voices_message()
+        if msg is not None:
+            self.live_speakers.changed = False  # type: ignore[union-attr]
+            await self.operator.broadcast(msg)
+
+    async def _source_mic(self) -> None:
+        """Browser mic -> Deepgram (diarized) until the operator stops. Clip time = seconds since
+        start: when no mic audio arrives, silence is sent so Deepgram's clock keeps pace with the
+        wall clock. A dropped stream reconnects; audio during the gap is lost (and said so)."""
+        assert self.t0_wall is not None
+        reconnects = 0
+        while True:
+            reader: asyncio.Task[None] | None = None
+            try:
+                dg = self.dg = self.dg or await self._open_deepgram()
+                offset = (time.time() - self.t0_wall) - dg.sent_s  # clip time = Deepgram time + offset
+                reader = asyncio.create_task(ingest.stt_reader(dg, offset, self.on_words, self.on_utterance_end))
+                pump = asyncio.create_task(self._mic_pump(dg, offset))
+                done, _ = await asyncio.wait({pump, reader}, return_when=asyncio.FIRST_COMPLETED)
+                if pump not in done:  # Deepgram closed on us
+                    pump.cancel()
+                    await asyncio.gather(pump, return_exceptions=True)
+                    exc = reader.exception()
+                    raise exc if exc else websockets.ConnectionClosed(None, None)
+                pump.result()
+                await dg.finish()  # operator stopped: flush the last words
+                try:
+                    await asyncio.wait_for(reader, FINAL_RESULTS_TIMEOUT_S)
+                except TimeoutError:
+                    log.warning("Deepgram did not close %.0fs after the room stopped", FINAL_RESULTS_TIMEOUT_S)
+                return
+            except (websockets.ConnectionClosed, OSError, TimeoutError, ConnectionError) as e:
+                if self.dg is not None:
+                    await self.dg.close()
+                self.dg = None
+                await self.on_utterance_end()
+                reconnects += 1
+                self.reconnects += 1
+                log.warning("Deepgram room stream dropped: %r", e)
+                if reconnects > MIC_MAX_RECONNECTS:
+                    await self.operator.broadcast(BannerMessage(level="error", text="Speech-to-text lost; captions stopped"))
+                    return
+                await self.operator.broadcast(BannerMessage(
+                    level="warn", text=f"Speech-to-text dropped; reconnecting ({reconnects}/{MIC_MAX_RECONNECTS}); audio in the gap is lost"))
+                await asyncio.sleep(min(2.0, 0.25 * reconnects))
+            finally:
+                if reader is not None and not reader.done():
+                    reader.cancel()
+
+    async def _mic_pump(self, dg: ingest.DeepgramLive, offset: float) -> None:
+        """Send mic chunks as they come; fill gaps with silence. Returns on the stop sentinel (None)."""
+        assert self.t0_wall is not None
+        while True:
+            try:
+                data = await asyncio.wait_for(self.mic_q.get(), 0.2)
+            except TimeoutError:
+                behind = (time.time() - self.t0_wall) - offset - dg.sent_s
+                if behind > 0.3:
+                    await dg.send(ingest.silence(min(behind, 1.0)))
+                continue
+            if data is None:
+                return
+            await dg.send(data)
 
     async def _source_events(self) -> None:
         """Same relative timing as the recorded run. Annotations go through the aggregator in
@@ -555,6 +690,8 @@ class SessionRunner:
     async def on_words(self, words: list[Word]) -> None:
         for seg in self.segmenter.on_final(words):
             await self.on_segment(seg)
+        if self.live_speakers is not None and self.live_speakers.changed:
+            await self.announce_voices()  # a new voice was heard and auto-assigned
         partial = self.segmenter.partial()
         if partial is not None:  # live captions at speaking pace; not logged, not analysed
             await asyncio.gather(self.operator.broadcast(partial), self.audience.broadcast(partial))
@@ -592,6 +729,7 @@ class SessionRunner:
     async def _lane(self, seg: Segment, name: Lane, coro: Awaitable[None]) -> None:
         """Run one lane under its budget. A timeout cancels it (no late result); a timeout or a
         failure ships a final `pending` to the operator and the event log (CONTEXT.md rule 7)."""
+        LANE_BUDGET_S.set(self.lane_timeout)  # copied into the lane's task: its model calls size to it
         try:
             await asyncio.wait_for(coro, self.lane_timeout)
             return

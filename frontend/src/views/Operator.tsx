@@ -7,15 +7,31 @@ import { AnnotatedText } from "../components/AnnotatedText";
 import { Banners } from "../components/Banners";
 import { FlagChip } from "../components/FlagChip";
 import { LatencyMeter } from "../components/LatencyMeter";
+import { listMics, MicStream } from "../mic";
 import { annotationsBySegment, type PendingMark, useView } from "../store";
 import type { Annotation, PartialMessage, Segment } from "../types";
 import { type ClipInfo, fetchClips, fetchState, type ServerState, useViewSocket } from "../ws";
+import { keyTarget, participantsFrom, RoomPanel, type RoomNames, RoomSetup } from "./Room";
+
+const NAMES_KEY = "bs-room-names";
+
+function loadNames(): RoomNames {
+  try {
+    const raw = localStorage.getItem(NAMES_KEY);
+    if (raw) return { a: "", b: "", mod: "", topic: "", ...(JSON.parse(raw) as Partial<RoomNames>) };
+  } catch {
+    /* private mode: start empty */
+  }
+  return { a: "", b: "", mod: "", topic: "" };
+}
 
 type Phase = "idle" | "loading" | "ready" | "starting" | "live" | "ended";
 
 /** Operator: load/start, full transcript with every flag (status, confidence, path, latency), kill,
- *  pending markers, latency + bank hit rate. */
-export function Operator() {
+ *  pending markers, latency + bank hit rate. `mode="room"`: two people live in front of a mic (no
+ *  clip): names + mic instead of a clip picker, and a speaker panel instead of the video. */
+export function Operator({ mode = "clip" }: { mode?: "clip" | "room" }) {
+  const room = mode === "room";
   const [clips, setClips] = useState<ClipInfo[]>([]);
   const [clip, setClip] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -23,7 +39,19 @@ export function Operator() {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const [videoOk, setVideoOk] = useState(true);
-  const { segments, annotations, pending, metrics, sessionId, conn, t0Wall, partial } = useView();
+  const { segments, annotations, pending, metrics, sessionId, conn, t0Wall, partial, voices } = useView();
+  // live room
+  const [names, setNames] = useState<RoomNames>(loadNames);
+  const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  const [micId, setMicId] = useState("");
+  const [level, setLevel] = useState(0);
+  const [micError, setMicError] = useState<string | null>(null);
+  const mic = useRef<MicStream | null>(null);
+  const startWhenReady = useRef(false);
+  const stopMic = () => {
+    mic.current?.stop();
+    mic.current = null;
+  };
   const setSession = useView((s) => s.setSession);
   const clipTime = useClipTime(500);
   const delay = useMemo(() => audienceDelay(), []);
@@ -34,12 +62,24 @@ export function Operator() {
     if (m.type === "ready") {
       setPhase("ready");
       void fetchState().then(setServer);
+      if (room && startWhenReady.current) {
+        // A room starts as soon as it is warm: the mic is already open (it needed the click).
+        startWhenReady.current = false;
+        if (sock.send({ type: "start", clip_id: "room" })) setPhase("starting");
+      }
     } else if (m.type === "started") {
       setPhase("live");
       void fetchState().then(setServer);
     } else if (m.type === "ended") {
       setPhase((p) => (p === "live" ? "ended" : p));
-    } else if (m.type === "banner" && m.level === "error") setPhase((p) => (p === "loading" || p === "starting" ? "idle" : p));
+      if (room) stopMic();
+    } else if (m.type === "banner" && m.level === "error") {
+      setPhase((p) => (p === "loading" || p === "starting" ? "idle" : p));
+      if (room && !useView.getState().t0Wall) {
+        startWhenReady.current = false;
+        stopMic();
+      }
+    }
   });
 
   useEffect(() => {
@@ -49,14 +89,15 @@ export function Operator() {
     });
     void fetchState().then((st) => {
       setServer(st);
-      if (st?.clip_id) {
+      // A room page only adopts a room session, a clip page only a clip session.
+      if (st?.clip_id && (st.source === "mic") === room) {
         setClip(st.clip_id);
         const ended = st.ended_clip_time ?? null;
-        setSession({ sessionId: st.session_id, clipId: st.clip_id, t0Wall: st.t0_wall, speed: st.speed, endedAt: ended });
+        setSession({ sessionId: st.session_id, clipId: st.clip_id, t0Wall: st.t0_wall, speed: st.speed, endedAt: ended, voices: st.voices ?? null });
         setPhase(ended != null ? "ended" : st.t0_wall ? "live" : "ready");
       }
     });
-  }, [setSession]);
+  }, [setSession]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!server) return;
     const duration = clips.find((c) => c.clip_id === server.clip_id)?.duration ?? null;
@@ -66,7 +107,7 @@ export function Operator() {
   // Re-asked on every state refresh (load, start, reconnect): one failed fetch while the backend was
   // restarting must not leave the preview on the trimmed clip for the rest of the page's life.
   useEffect(() => {
-    if (!server?.clip_id) return setSource(null);
+    if (!server?.clip_id || room) return setSource(null); // a room has no clip video
     let live = true;
     void fetchSource(server.clip_id).then((s) => live && setSource(s));
     return () => {
@@ -100,6 +141,64 @@ export function Operator() {
   const flagCount = Object.keys(annotations).length;
   const shown = flaggedOnly ? segments.filter((s) => bySegment[s.segment_id] || pending[s.segment_id]) : segments;
 
+  // --- live room ---
+  useEffect(() => {
+    if (!room) return;
+    void listMics().then(setMics);
+    return () => stopMic(); // leaving the page closes the mic
+  }, [room]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+    } catch {
+      /* ignore */
+    }
+  }, [names]);
+  const startRoom = async () => {
+    setMicError(null);
+    const m = new MicStream(
+      (rms) => setLevel((prev) => (Math.abs(prev - rms) > 0.002 ? rms : prev)),
+      (err) => setMicError(err),
+    );
+    try {
+      await m.start(micId || undefined); // in the click: browsers only open audio after a gesture
+    } catch (e) {
+      setMicError(e instanceof Error && e.name === "NotAllowedError" ? "Microphone access was refused. Allow it in the address bar, then try again." : String(e instanceof Error ? e.message : e));
+      return;
+    }
+    mic.current = m;
+    void listMics().then(setMics); // labels appear once access is granted
+    startWhenReady.current = true;
+    if (sock.send({ type: "load_room", participants: participantsFrom(names), topic: names.topic.trim() || null })) setPhase("loading");
+    else {
+      startWhenReady.current = false;
+      stopMic();
+      setMicError("Not connected to the backend.");
+    }
+  };
+  const stopRoom = () => {
+    sock.send({ type: "stop" });
+    stopMic();
+  };
+  const assignVoice = (voice: number, speakerId: string) => sock.send({ type: "assign_voice", voice, speaker_id: speakerId });
+  const override = (speakerId: string | null) => sock.send({ type: "speaker_override", speaker_id: speakerId });
+  useEffect(() => {
+    if (!room || phase !== "live") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select")) return;
+      const target = keyTarget(e.key, voices?.participants ?? []);
+      if (target === undefined) return;
+      e.preventDefault();
+      override(target);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [room, phase, voices]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nameOf = (id: string) => voices?.participants.find((p) => p.speaker_id === id)?.name ?? speakerName(id);
+  const speaking = partial?.speaker_id || segments[segments.length - 1]?.speaker_id || null;
+  const busy = phase === "loading" || phase === "starting";
+
   const send = (type: "load" | "start") => {
     if (!clip) return;
     if (sock.send({ type, clip_id: clip })) setPhase(type === "load" ? "loading" : "starting");
@@ -112,8 +211,25 @@ export function Operator() {
     <div className="flex min-h-[calc(100dvh-var(--chrome,3rem))] flex-col bg-zinc-950 text-zinc-100 lg:h-[calc(100dvh-var(--chrome,3rem))]">
       <header className="flex flex-wrap items-center gap-3 border-b border-zinc-800 px-4 py-3">
         <Link to="/" className="font-bold tracking-tight">
-          Operator
+          {room ? "Room" : "Operator"}
         </Link>
+        {room ? (
+          <>
+            <RoomSetup names={names} setNames={setNames} mics={mics} micId={micId} setMicId={setMicId} level={level}
+              disabled={busy || phase === "live"} />
+            {phase === "live" ? (
+              <button type="button" onClick={stopRoom} className="btn border-red-700 text-red-300 hover:bg-red-950">
+                Stop
+              </button>
+            ) : (
+              <button type="button" onClick={() => void startRoom()} disabled={conn !== "open" || busy} className="btn btn-primary"
+                title="Opens the microphone, warms up, and starts listening">
+                {phase === "loading" ? "Warming up…" : phase === "starting" ? "Starting…" : "Start"}
+              </button>
+            )}
+          </>
+        ) : (
+          <>
         <select
           value={clip}
           onChange={(e) => setClip(e.target.value)}
@@ -139,6 +255,8 @@ export function Operator() {
         >
           {phase === "starting" ? "Starting…" : "Start"}
         </button>
+          </>
+        )}
         <span className="text-sm text-zinc-400">
           {phase === "live" && <span className="mr-2 rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">LIVE</span>}
           {phase === "ended" && (
@@ -165,6 +283,11 @@ export function Operator() {
       </header>
 
       <div className="space-y-3 border-b border-zinc-800 px-4 py-3">
+        {micError && (
+          <div className="rounded-md border border-red-700 bg-red-950 px-3 py-2 text-sm text-red-100" role="alert">
+            {micError}
+          </div>
+        )}
         <Banners />
         <LatencyMeter m={metrics} pendingCount={pendingCount} />
       </div>
@@ -179,9 +302,17 @@ export function Operator() {
               <input type="checkbox" checked={flaggedOnly} onChange={(e) => setFlaggedOnly(e.target.checked)} /> flagged only
             </label>
           </div>
-          <Transcript segments={shown} bySegment={bySegment} pending={pending} onKill={kill} live={phase === "live"} onAir={onAir} partial={partial} />
+          <Transcript segments={shown} bySegment={bySegment} pending={pending} onKill={kill} live={phase === "live"} onAir={room ? null : onAir} partial={partial}
+            nameOf={nameOf} idle={room ? "Type the two names, then Start. The microphone opens and captions begin when someone speaks." : "Load a clip, then start."} />
         </section>
         <aside className="border-t border-zinc-800 p-4 lg:w-96 lg:border-t-0 lg:border-l">
+          {room ? (
+            <>
+              <RoomPanel voices={voices} speaking={speaking} live={phase === "live"} onAssign={assignVoice} onOverride={override} />
+              <Legend />
+            </>
+          ) : (
+            <>
           <div className="relative overflow-hidden rounded-lg bg-zinc-900">
             {server?.clip_id && videoOk ? (
               <>
@@ -203,13 +334,15 @@ export function Operator() {
             “not on air” can be killed before the audience sees them.
           </p>
           <Legend />
+            </>
+          )}
         </aside>
       </div>
     </div>
   );
 }
 
-function Transcript({ segments, bySegment, pending, onKill, live, onAir, partial }: {
+function Transcript({ segments, bySegment, pending, onKill, live, onAir, partial, nameOf, idle }: {
   segments: Segment[];
   bySegment: Record<string, Annotation[]>;
   pending: Record<string, PendingMark[]>;
@@ -217,6 +350,8 @@ function Transcript({ segments, bySegment, pending, onKill, live, onAir, partial
   live: boolean;
   onAir: number | null;
   partial: PartialMessage | null;
+  nameOf: (speakerId: string) => string;
+  idle: string;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -233,7 +368,7 @@ function Transcript({ segments, bySegment, pending, onKill, live, onAir, partial
       }}
       className="min-h-[50vh] flex-1 overflow-y-auto px-4 pb-6 lg:min-h-0"
     >
-      {segments.length === 0 && <p className="py-10 text-center text-zinc-500">{live ? "Waiting for the first sentence…" : "Load a clip, then start."}</p>}
+      {segments.length === 0 && <p className="py-10 text-center text-zinc-500">{live ? "Waiting for the first sentence…" : idle}</p>}
       <ol className="space-y-2">
         {segments.map((s) => {
           const anns = bySegment[s.segment_id] ?? [];
@@ -251,7 +386,7 @@ function Transcript({ segments, bySegment, pending, onKill, live, onAir, partial
                   )}
                 </span>
                 <p className={`min-w-0 flex-1 leading-relaxed ${mod ? "text-zinc-500" : ""}`}>
-                  <span className={`mr-1.5 font-semibold ${mod ? "text-zinc-500" : "text-amber-200"}`}>{speakerName(s.speaker_id)}</span>
+                  <span className={`mr-1.5 font-semibold ${mod ? "text-zinc-500" : "text-amber-200"}`}>{nameOf(s.speaker_id)}</span>
                   {mod ? s.text : <AnnotatedText text={s.text} annotations={anns} chipSize="sm" />}
                   {s.low_conf_words.length > 0 && !mod && (
                     <span className="ml-2 text-[11px] text-zinc-500" title={`Low STT confidence: ${s.low_conf_words.join(", ")}`}>
@@ -284,7 +419,7 @@ function Transcript({ segments, bySegment, pending, onKill, live, onAir, partial
         <p className="mt-2 flex gap-3 px-3 text-zinc-400 italic" aria-live="off">
           <span className="w-12 shrink-0 pt-0.5 text-xs not-italic tabular-nums">{fmtTime(partial.words[0]?.t_start)}</span>
           <span>
-            <span className="mr-1.5 font-semibold not-italic">{speakerName(partial.speaker_id)}</span>
+            <span className="mr-1.5 font-semibold not-italic">{nameOf(partial.speaker_id)}</span>
             {partial.words.map((w) => w.text).join(" ")}
             <span className="ml-1 inline-block h-[0.9em] w-[2px] translate-y-[2px] animate-pulse bg-current" aria-hidden />
           </span>

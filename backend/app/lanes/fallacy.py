@@ -10,7 +10,7 @@ from pydantic import Field, model_validator
 from app.interfaces import Emit
 from app.llm.client import FALLBACK_SLACK_S, MIN_FALLBACK_BUDGET_S, groq_json
 from app.models import Annotation, ContractModel, LaneContext, Segment, annotation_id
-from app.session import LANE_TIMEOUT_S
+from app.session import LANE_BUDGET_S, LANE_TIMEOUT_S
 from app.verify import stt_safe
 
 # groq_json holds MIN_FALLBACK_BUDGET_S + FALLBACK_SLACK_S back from Groq so Gemini can
@@ -53,7 +53,7 @@ async def run_fallacy(seg: Segment, view: LaneContext, emit: Emit) -> None:
         "opponent_turn": opponent,
         "speaker_turn": _text([s for s in view.speaker_turn if s.segment_id != seg.segment_id]),
         "sentence": seg.text,
-    }, FallacyResult, timeout=FALLACY_LLM_TIMEOUT_S)
+    }, FallacyResult, timeout=LANE_BUDGET_S.get() - FALLACY_LLM_RESERVE_S)  # this session's lane budget
     f = FallacyResult.model_validate(r.data)
     if not f.has_fallacy:
         return

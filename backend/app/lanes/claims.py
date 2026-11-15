@@ -21,7 +21,7 @@ from app.lanes.consistency import NLI_BUDGET_S, run_consistency
 from app.llm.client import LLMError, groq_json
 from app.models import (Annotation, Category, Claim, ClaimRecord, ContractModel, Evidence, LaneContext, Passage,
                         Segment, SlowJob, VerdictJob, annotation_id)
-from app.session import LANE_TIMEOUT_S
+from app.session import LANE_BUDGET_S, LANE_TIMEOUT_S
 from app.verify import evidence_span, stt_safe, transcript_span
 
 log = logging.getLogger(__name__)
@@ -87,14 +87,15 @@ async def run_claims(seg: Segment, view: LaneContext, kb: KnowledgeBase, emit: E
     if kb is None:
         raise ValueError("claims lane requires a real KB")
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + LANE_TIMEOUT_S - LANE_TAIL_S
+    budget = LANE_BUDGET_S.get()  # this session's lane budget (LANE_TIMEOUT_S, or 7 s in a room)
+    deadline = loop.time() + budget - LANE_TAIL_S
     result = await groq_json("claim_extract", {
         "sentence": seg.text,
         "recent_segments": [s.text for s in view.recent_segments[-3:]],
         "last_question": view.last_question.text if view.last_question else None,
         "rolling_summary": view.rolling_summary,
         "speaker_digest": view.speaker_digest.model_dump(mode="json") if view.speaker_digest else None,
-    }, Extraction, timeout=CLAIMS_LLM_TIMEOUT_S)
+    }, Extraction, timeout=budget - CLAIMS_LLM_RESERVE_S)
     extracted = Extraction.model_validate(result.data)
     claims = [Claim.model_validate(c.model_dump()) for c in extracted.claims]
     # Drop an invented span; never rewrite it into the transcript. If every extracted

@@ -8,7 +8,8 @@ const YOUTUBE_ID = "QroA1SkaJTg";
 
 const TABS = [
   { to: "/demo", label: "Recorded demo", end: true },
-  { to: "/demo/live", label: "Live", end: false },
+  { to: "/demo/live", label: "Live clip", end: false },
+  { to: "/demo/room", label: "Room", end: false },
 ];
 
 /** Segmented switch under the site nav: Recorded demo | Live. */
@@ -87,6 +88,20 @@ export function LiveDemo() {
       <Nav />
       <DemoTabs />
       <Operator />
+    </div>
+  );
+}
+
+/** Live room: two people debating in front of the laptop's mic. */
+export function RoomDemo() {
+  useEffect(() => {
+    document.title = "Live room · BS Subtitles";
+  }, []);
+  return (
+    <div style={{ "--chrome": "calc(5.75rem + 1px)" } as React.CSSProperties}>
+      <Nav />
+      <DemoTabs />
+      <Operator mode="room" />
     </div>
   );
 }

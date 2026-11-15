@@ -105,6 +105,57 @@ class TimelineLookup:
         e = min(candidates, key=lambda e: min(abs(t_mid - e.t_start), abs(t_mid - e.t_end)))
         return e.speaker_id, e.role
 
+    def tag(self, w: Word) -> tuple[str, Literal["speaker", "moderator"]]:
+        return self.who((w.t_start + w.t_end) / 2)
+
+
+class LiveSpeakers:
+    """Speaker and role in a live room, where there is no timeline.
+
+    Deepgram diarization labels each word with a voice (`speaker_id="voice0"`, ...). Precedence:
+    the operator's override (keys 1 / 2 / M: "this is X talking now"), then the operator's voice map,
+    then auto-assign: a voice heard for the first time gets the next participant with no voice yet,
+    the moderator first (a debate opens with the moderator), then the debaters in order. A voice
+    heard once everyone is taken goes to the last debater until the operator fixes it.
+    """
+
+    def __init__(self, participants: list[tuple[str, Literal["speaker", "moderator"]]]) -> None:
+        if not participants:
+            raise ValueError("a room needs at least one participant")
+        self.roles = dict(participants)
+        self.order = [sid for sid, _ in participants]
+        self.voices: dict[int, str] = {}
+        self.override: str | None = None
+        self.changed = False  # set when the map changes, so the session can tell the operator
+
+    def _voice(self, w: Word) -> int | None:
+        if w.speaker_id and w.speaker_id.startswith("voice") and w.speaker_id[5:].isdigit():
+            return int(w.speaker_id[5:])
+        return None
+
+    def tag(self, w: Word) -> tuple[str, Literal["speaker", "moderator"]]:
+        voice = self._voice(w)
+        if voice is not None and voice not in self.voices:
+            debaters = [s for s in self.order if self.roles[s] == "speaker"] or self.order
+            queue = [s for s in self.order if self.roles[s] == "moderator"] + debaters
+            free = [s for s in queue if s not in self.voices.values()]
+            self.voices[voice] = free[0] if free else debaters[-1]
+            self.changed = True
+        sid = self.override or (self.voices.get(voice) if voice is not None else None) or self.order[0]
+        return sid, self.roles.get(sid, "speaker")
+
+    def assign(self, voice: int, speaker_id: str) -> None:
+        if speaker_id not in self.roles:
+            raise ValueError(f"unknown participant {speaker_id!r}")
+        self.voices[voice] = speaker_id
+        self.changed = True
+
+    def set_override(self, speaker_id: str | None) -> None:
+        if speaker_id is not None and speaker_id not in self.roles:
+            raise ValueError(f"unknown participant {speaker_id!r}")
+        self.override = speaker_id
+        self.changed = True
+
 
 # --- transcript replay (REPLAY_TRANSCRIPT=1, and the mock stream) -------------
 
@@ -213,6 +264,8 @@ DEEPGRAM_PARAMS: dict[str, str | int] = {
     "interim_results": "true",  # required for utterance_end_ms; we only use is_final results
     "utterance_end_ms": 1000,
 }
+# Live room (one mic, two people): Deepgram tells the voices apart; LiveSpeakers names them.
+ROOM_PARAMS: dict[str, str | int] = {"diarize": "true"}
 
 
 class DeepgramLive:
@@ -305,6 +358,7 @@ def dg_final_words(msg: dict[str, Any], offset: float = 0.0) -> list[Word] | Non
             t_start=round(w["start"] + offset, 3),
             t_end=round(w["end"] + offset, 3),
             confidence=max(0.0, min(1.0, float(w.get("confidence", 0.0)))),
+            speaker_id=f"voice{int(w['speaker'])}" if w.get("speaker") is not None else None,
         )
         for w in alts[0].get("words") or []
     ]

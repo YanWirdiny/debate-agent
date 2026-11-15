@@ -13,6 +13,9 @@ gsap.registerPlugin(useGSAP, ScrollTrigger);
 export function Problem() {
   const root = useRef<HTMLElement>(null);
   const stRef = useRef<ScrollTrigger | null>(null);
+  // Set once ↓ has asked for the reveal: a second ↓ while it is still playing moves on instead of
+  // replaying it (a presenter pressing quickly must never feel stuck).
+  const revealAsked = useRef(false);
 
   useGSAP(
     () => {
@@ -31,6 +34,9 @@ export function Problem() {
           pin: true,
           scrub: 0.6,
           animation: tl,
+          onUpdate: (self) => {
+            if (self.progress < 0.03) revealAsked.current = false; // back at the photo (keys or mouse)
+          },
         });
       });
       mm.add("(prefers-reduced-motion: reduce)", () => {
@@ -53,8 +59,19 @@ export function Problem() {
       const back = ["ArrowUp", "PageUp", "ArrowLeft"].includes(e.key);
       const p = st.progress;
       let to: number | null = null;
-      if (fwd && p < 0.97) to = st.end - 2; // reveal the paragraph
-      else if (back && p > 0.03) to = st.start; // back to the photo
+      if (fwd && p < 0.97 && !revealAsked.current) {
+        to = st.end - 2; // reveal the paragraph
+        revealAsked.current = true;
+      } else if (back && p > 0.03) {
+        to = st.start; // back to the photo
+        revealAsked.current = false;
+      } else if (fwd && p < 0.97) {
+        // second ↓ during the reveal: jump to the next slide
+        document.querySelector('[data-slide="2"]')?.scrollIntoView({ behavior: "smooth" });
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
       else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         // ← / → are not slide keys elsewhere on the page: move to the neighbouring slide here.
         document.querySelector(`[data-slide="${e.key === "ArrowRight" ? 2 : 0}"]`)?.scrollIntoView({ behavior: "smooth" });

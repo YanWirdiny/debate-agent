@@ -5,7 +5,7 @@ A speaker change mid-buffer always forces a split: never a cross-speaker sentenc
 """
 from __future__ import annotations
 
-from app.ingest import TimelineLookup
+from app.ingest import LiveSpeakers, TimelineLookup
 from app.models import PartialMessage, PartialWord, Segment, Word, segment_id
 
 LOW_CONF = 0.85
@@ -22,7 +22,7 @@ def _ends_sentence(token: str) -> bool:
 
 
 class Segmenter:
-    def __init__(self, session_id: str, timeline: TimelineLookup | None = None) -> None:
+    def __init__(self, session_id: str, timeline: TimelineLookup | LiveSpeakers | None = None) -> None:
         self.session_id = session_id
         self.timeline = timeline
         self._buf: list[Word] = []
@@ -56,7 +56,7 @@ class Segmenter:
 
     def _tag(self, w: Word) -> Word:
         if self.timeline is not None:
-            speaker_id, role = self.timeline.who((w.t_start + w.t_end) / 2)
+            speaker_id, role = self.timeline.tag(w)
             return w.model_copy(update={"speaker_id": speaker_id, "role": role})
         if w.speaker_id is None or w.role is None:
             raise ValueError("word has no speaker and the segmenter has no timeline")

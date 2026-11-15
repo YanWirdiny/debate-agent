@@ -30,7 +30,8 @@ export default defineConfig({
       command: `.venv/bin/uvicorn app.main:app --workers 1 --port ${BACKEND_PORT}`,
       cwd: "../backend",
       url: `http://127.0.0.1:${BACKEND_PORT}/health`,
-      env: { REPLAY_TRANSCRIPT: "1", INTEL: "fake", MONGODB_URI: "mongodb://127.0.0.1:1" },
+      // No Deepgram key even if backend/.env has one: e2e never pays for speech-to-text.
+      env: { REPLAY_TRANSCRIPT: "1", INTEL: "fake", MONGODB_URI: "mongodb://127.0.0.1:1", DEEPGRAM_API_KEY: "" },
       reuseExistingServer: false,
       timeout: 60_000,
     },

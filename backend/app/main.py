@@ -34,8 +34,9 @@ from app.aggregator import DEFAULT_AUDIENCE_MIN_CONF
 from app.config import Settings
 from app.eventlog import ARCHIVE_NAME, FALLBACK_NAME, load_session_events
 from app.hubs import Hub
-from app.models import BannerMessage, ClientMessage, KillMessage, LoadMessage, StartMessage
-from app.session import Intel, SessionRunner, Source
+from app.models import (AssignVoiceMessage, BannerMessage, ClientMessage, Clip, KillMessage, LoadMessage, LoadRoomMessage,
+                        Participant, SpeakerOverrideMessage, StartMessage, StopMessage)
+from app.session import ROOM_LANE_TIMEOUT_S, Intel, SessionRunner, Source
 
 log = logging.getLogger(__name__)
 _client_msg = TypeAdapter(ClientMessage)
@@ -59,6 +60,7 @@ class SessionManager:
         self.operator = Hub("operator")
         self.audience = Hub("audience")
         self.runner: SessionRunner | None = None
+        self.mic_open = False
         self.speed = 1.0
         self.source: Source = source
         self.deepgram_key = deepgram_key
@@ -90,6 +92,31 @@ class SessionManager:
         )
 
     async def load(self, clip_id: str) -> None:
+        await self._load(clip_id)
+
+    async def load_room(self, participants: list[Participant], topic: str | None = None) -> None:
+        """A live room: browser mic -> Deepgram (diarized), speakers named by the operator."""
+        if not self.deepgram_key:
+            raise ValueError("A live room needs DEEPGRAM_API_KEY (speech-to-text)")
+        ids = [p.speaker_id for p in participants]
+        if len(set(ids)) != len(ids):
+            raise ValueError("two participants have the same id")
+        names = " vs ".join(p.name for p in participants if p.role == "speaker") or "Live room"
+        title = f"{names}: {topic.strip()}" if topic and topic.strip() else names
+        clip = Clip(clip_id="room", title=title, video_path="", audio_path="")
+        await self._load("room", clip=clip, source="mic", participants=participants, lane_timeout=ROOM_LANE_TIMEOUT_S, topic=topic)
+
+    def room(self) -> SessionRunner:
+        if self.runner is None or self.runner.live_speakers is None:
+            raise ValueError("no live room session")
+        return self.runner
+
+    async def stop(self) -> None:
+        if self.runner is None or self.runner.t0_wall is None:
+            raise ValueError("nothing is running")
+        await self.runner.stop()
+
+    async def _load(self, clip_id: str, **room: Any) -> None:
         if self.runner is not None:
             await self.runner.stop()
             self.runner = None
@@ -101,10 +128,11 @@ class SessionManager:
             archive = self.runs_dir / session_id / ARCHIVE_NAME
         runner = SessionRunner(
             session_id, clip_id, operator=self.operator, audience=self.audience, speed=self.speed,
-            source=self.source, deepgram_key=self.deepgram_key, db=self.db, intel=Intel.by_name(self.intel),
+            deepgram_key=self.deepgram_key, db=self.db, intel=Intel.by_name(self.intel),
             sink=dbm.MongoSink(self.db) if self.db is not None else None, fallback_path=fallback,
             archive_path=archive, audience_min_conf=self.audience_min_conf,
             replay_session_id=self.replay_session_id, runs_dir=self.runs_dir,
+            **{"source": self.source, **room},  # a room overrides source, clip, budget
         )
         await runner.warm_up()
         self.runner = runner
@@ -161,6 +189,18 @@ class SessionManager:
             await self.start(msg.clip_id)
         elif isinstance(msg, KillMessage):
             self.kill(msg.annotation_id)
+        elif isinstance(msg, LoadRoomMessage):
+            await self.load_room(msg.participants, msg.topic)
+        elif isinstance(msg, AssignVoiceMessage):
+            r = self.room()
+            r.live_speakers.assign(msg.voice, msg.speaker_id)  # type: ignore[union-attr]
+            await r.announce_voices()
+        elif isinstance(msg, SpeakerOverrideMessage):
+            r = self.room()
+            r.live_speakers.set_override(msg.speaker_id)  # type: ignore[union-attr]
+            await r.announce_voices()
+        elif isinstance(msg, StopMessage):
+            await self.stop()
 
 
 def create_app(manager: SessionManager | None = None) -> FastAPI:
@@ -228,7 +268,8 @@ def create_app(manager: SessionManager | None = None) -> FastAPI:
             return {"session_id": None, "clip_id": None, "t0_wall": None, "speed": mgr().speed,
                     "source": mgr().source, "intel": mgr().intel}
         return {"session_id": r.session_id, "clip_id": r.clip_id, "t0_wall": r.t0_wall, "speed": r.speed,
-                "source": r.source, "intel": r.intel.name, "ended_clip_time": r.ended_clip_time}
+                "source": r.source, "intel": r.intel.name, "ended_clip_time": r.ended_clip_time,
+                "voices": (v.model_dump(mode="json") if (v := r.voices_message()) else None)}
 
     @app.get("/sessions")
     async def sessions_list() -> list[dict]:
@@ -259,6 +300,29 @@ def create_app(manager: SessionManager | None = None) -> FastAPI:
             pass
         finally:
             mgr().audience.remove(ws)
+
+    @app.websocket("/ws/mic")
+    async def ws_mic(ws: WebSocket) -> None:
+        """Live room audio: binary frames of 16 kHz mono PCM16 from the operator's browser. One mic
+        at a time; audio is ignored unless a room session is running."""
+        m = mgr()
+        if m.mic_open:
+            await ws.close(code=1013)  # try again later: another mic is connected
+            return
+        await ws.accept()
+        m.mic_open = True
+        try:
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    break
+                data = msg.get("bytes")
+                if data and m.runner is not None:
+                    m.runner.feed_mic(data)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            m.mic_open = False
 
     @app.websocket("/ws/operator")
     async def ws_operator(ws: WebSocket) -> None:

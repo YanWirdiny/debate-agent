@@ -28,6 +28,12 @@ WIRE_MODELS = (
     "LoadMessage",
     "StartMessage",
     "KillMessage",
+    "Participant",
+    "LoadRoomMessage",
+    "AssignVoiceMessage",
+    "SpeakerOverrideMessage",
+    "StopMessage",
+    "VoicesMessage",
 )
 ALIASES = {"ServerMessage": m.ServerMessage, "ClientMessage": m.ClientMessage}
 

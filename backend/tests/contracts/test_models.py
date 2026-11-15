@@ -32,6 +32,12 @@ SAMPLES = {
     "EndedMessage": dict(session_id="fixture", clip_time=511.5),
     "RemovalMessage": dict(annotation_id=ANN["annotation_id"], status="killed"),
     "StartMessage": dict(clip_id="clip"), "KillMessage": dict(annotation_id=ANN["annotation_id"]),
+    "Participant": dict(speaker_id="alice", name="Alice"),
+    "LoadRoomMessage": dict(participants=[dict(speaker_id="alice", name="Alice"), dict(speaker_id="bob", name="Bob")], topic="The economy"),
+    "AssignVoiceMessage": dict(voice=1, speaker_id="bob"),
+    "SpeakerOverrideMessage": dict(speaker_id=None),
+    "StopMessage": dict(),
+    "VoicesMessage": dict(participants=[dict(speaker_id="alice", name="Alice")], voices={"0": "alice"}, override=None),
     "LoadMessage": dict(clip_id="clip"), "BannerMessage": dict(level="warn", text="Deepgram reconnecting"),
     "PendingMessage": dict(segment_id="fixture:1", lane="claims", reason="timeout"),
     "PartialWord": dict(text="Prices", t_start=1.0, t_end=1.3),
@@ -48,7 +54,7 @@ def test_json_roundtrip(name):
     obj = MODELS[name].model_validate(SAMPLES[name])
     assert MODELS[name].model_validate_json(obj.model_dump_json()) == obj
 
-@pytest.mark.parametrize("alias,names", [(m.SlowJob, ["VerdictJob", "PrefetchJob"]), (m.ClientMessage, ["LoadMessage", "StartMessage", "KillMessage"]), (m.ServerMessage, ["SegmentMessage", "AnnotationMessage", "AnnotationUpdateMessage", "MetricsMessage", "ReadyMessage", "StartedMessage", "EndedMessage", "RemovalMessage", "BannerMessage", "PendingMessage", "PartialMessage"])])
+@pytest.mark.parametrize("alias,names", [(m.SlowJob, ["VerdictJob", "PrefetchJob"]), (m.ClientMessage, ["LoadMessage", "StartMessage", "KillMessage", "LoadRoomMessage", "AssignVoiceMessage", "SpeakerOverrideMessage", "StopMessage"]), (m.ServerMessage, ["SegmentMessage", "AnnotationMessage", "AnnotationUpdateMessage", "MetricsMessage", "ReadyMessage", "StartedMessage", "EndedMessage", "RemovalMessage", "BannerMessage", "PendingMessage", "PartialMessage", "VoicesMessage"])])
 def test_discriminated_unions(alias, names):
     adapter = TypeAdapter(alias)
     for name in names:

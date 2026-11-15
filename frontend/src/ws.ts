@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useView } from "./store";
-import type { ClientMessage, ServerMessage } from "./types";
+import type { ClientMessage, ServerMessage, VoicesMessage } from "./types";
 
 const RETRY_MS = [500, 1000, 2000, 4000];
 
@@ -72,6 +72,8 @@ export interface ServerState {
   intel: string;
   /** Clip seconds where the session ended; null/absent while it runs. */
   ended_clip_time?: number | null;
+  /** Live room: participants and voice map (null for clip sessions). */
+  voices?: VoicesMessage | null;
 }
 
 export async function fetchState(): Promise<ServerState | null> {
