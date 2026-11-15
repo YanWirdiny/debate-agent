@@ -49,7 +49,7 @@ MAX_LINE_WORDS = 25
 
 def decode(path: Path) -> np.ndarray:
     """Any audio/video file -> float32 mono 8 kHz (ffmpeg)."""
-    out = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
+    out = subprocess.run(["ffmpeg", "-v", "error", "-i", str(Path(path).resolve()), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
                          capture_output=True, check=True).stdout
     return np.frombuffer(out, dtype=np.float32)
 
@@ -260,8 +260,8 @@ def transcribe_window(original: Path, start: float, end: float, cache: Path) -> 
         from scripts.label_clip import transcribe
         wav = cache.with_suffix(".wav")
         cache.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(start), "-to", str(end), "-i", str(original),
-                        "-ac", "1", "-ar", "16000", "-sample_fmt", "s16", str(wav)], check=True)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(start), "-to", str(end), "-i", str(Path(original).resolve()),
+                        "-ac", "1", "-ar", "16000", "-sample_fmt", "s16", str(Path(wav).resolve())], check=True)
         resp = transcribe(wav, lenient_settings().deepgram_api_key.get_secret_value())
         cache.write_text(json.dumps({"window_start": start, "response": resp}))
         wav.unlink()

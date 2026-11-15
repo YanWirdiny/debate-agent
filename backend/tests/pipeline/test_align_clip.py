@@ -1,4 +1,7 @@
 """scripts/align_clip.py recovers a known cut list from audio alone."""
+import subprocess
+from pathlib import Path
+
 import numpy as np
 
 from scripts import align_clip as ac
@@ -49,3 +52,43 @@ def test_cut_captions_names_speakers_skips_pieces_and_applies_overrides():
         ("harris", "Thanks."), ("harris", "So anyway"), ("harris", "big"),  # a 5 s pause starts a new line
         ("moderator", "Over"), ("harris", "to you.")]                    # override covers "Over" only
     assert lines[0]["words"][0] == {"text": "Thanks.", "t_start": 13.0, "t_end": 13.3}
+
+
+def test_ffmpeg_paths_are_absolute(tmp_path, monkeypatch):
+    """File paths passed to ffmpeg are resolved, so a name starting with '-' is not an option."""
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(list(args))
+        dest = args[-1]
+        if dest != "-":
+            Path(dest).write_bytes(b"")
+        return subprocess.CompletedProcess(args, 0, stdout=b"\x00\x00\x00\x00")
+
+    monkeypatch.setattr(ac.subprocess, "run", fake_run)
+    dashed = Path("-dashed.wav")
+    assert ac.decode(dashed).shape == (1,)
+    decode_input = calls[0][calls[0].index("-i") + 1]
+    assert decode_input == str(dashed.resolve()) and decode_input.startswith("/")
+
+    class _Key:
+        def get_secret_value(self):
+            return "k"
+
+    class _Settings:
+        deepgram_api_key = _Key()
+
+    monkeypatch.setattr("app.db.lenient_settings", lambda: _Settings())
+    monkeypatch.setattr(
+        "scripts.label_clip.transcribe",
+        lambda wav, key: {"results": {"channels": [{"alternatives": [{"words": [{"start": 0.2, "end": 0.5, "word": "hi"}]}]}]}},
+    )
+    original = Path("-original.mp4")
+    cache = tmp_path / "window.json"
+    words = ac.transcribe_window(original, 3.0, 8.0, cache)
+    assert words == [{"start": 3.2, "end": 3.5, "word": "hi"}]
+    args = calls[1]
+    original_arg = args[args.index("-i") + 1]
+    wav_arg = args[-1]
+    assert original_arg == str(original.resolve()) and original_arg.startswith("/")
+    assert wav_arg == str(cache.with_suffix(".wav").resolve()) and wav_arg.startswith("/")
