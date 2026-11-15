@@ -6,6 +6,7 @@ import { CATEGORIES } from "../categories";
 import type { Annotation, Category } from "../types";
 import { Nav } from "./Nav";
 import { PipelineStory } from "./PipelineStory";
+import { Problem } from "./Problem";
 
 /* ------------------------------------------------------------------------------------------------
  * Presentation mode: every <section data-slide> is one screen. Arrow keys / PageUp/Down / Space move
@@ -193,26 +194,7 @@ export function Home() {
       </section>
 
       {/* 1 · Why */}
-      <section data-slide={1} className="bg-almond text-ink">
-        <div className="mx-auto grid min-h-[100dvh] max-w-6xl items-center gap-12 px-6 py-24 lg:grid-cols-2">
-          <figure>
-            <img src="/img/first-televised-debate.jpg" alt="Kennedy and Nixon shake hands in the television studio before the first televised presidential debate, 1960" className="w-full rounded-2xl shadow-xl shadow-ink/20 grayscale" loading="lazy" />
-            <figcaption className="mt-3 text-sm text-ink/55">Chicago, September 26, 1960. The first televised presidential debate.</figcaption>
-          </figure>
-          <div>
-            <p className="eyebrow text-mahogany">The problem</p>
-            <h2 className="display mt-3 text-5xl md:text-7xl">Debates went live in 1960. Fact-checking still hasn't.</h2>
-            <p className="lead mt-8">
-              Tens of millions of people watch a presidential debate as it happens. The fact-checks arrive afterwards, in articles most of
-              that audience never reads. By then the line has landed and the moment has passed.
-            </p>
-            <p className="lead mt-5">
-              BS Subtitles moves the check into the broadcast itself: the same captions viewers already read, marked where a claim does not
-              hold up.
-            </p>
-          </div>
-        </div>
-      </section>
+      <Problem />
 
       {/* 2 · How it works */}
       <PipelineStory />
