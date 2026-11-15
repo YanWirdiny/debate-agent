@@ -289,3 +289,30 @@ def test_http_state_and_clip_video(tmp_path, monkeypatch):
     asyncio.run(mgr.load("fixture"))
     st = client.get("/state").json()
     assert st["clip_id"] == "fixture" and st["session_id"].startswith("fixture-") and st["t0_wall"] is None
+
+
+def test_clip_source_and_original(tmp_path, monkeypatch):
+    """source.json + original video are served for the audience's original mode; paths stay inside data/clips."""
+    import json as _json
+    from app import ingest
+
+    clips = tmp_path / "clips"
+    (clips / "c1").mkdir(parents=True)
+    (clips / "orig").mkdir()
+    (clips / "orig" / "full.mp4").write_bytes(b"\x01" * 2048)
+    src = {"original": {"path": "orig/full.mp4", "url": "", "duration": 10}, "window": {"start": 1, "end": 5},
+           "edl": [{"trim_start": 0, "trim_end": 4, "orig_start": 1, "score": 1}], "cut_captions": []}
+    (clips / "c1" / "source.json").write_text(_json.dumps(src))
+    clip = next(c for c in ingest.list_clips() if c.clip_id == "fixture")
+    monkeypatch.setattr(ingest, "CLIPS_DIR", clips)
+    monkeypatch.setattr(ingest, "list_clips", lambda: [clip.model_copy(update={"clip_id": "c1"}), clip])
+    client = TestClient(create_app(SessionManager(runs_dir=tmp_path)))
+
+    assert client.get("/clips/c1/source").json()["window"] == {"start": 1, "end": 5}
+    r = client.get("/clips/c1/original", headers={"Range": "bytes=0-9"})
+    assert r.status_code == 206 and r.content == b"\x01" * 10
+    assert client.get("/clips/fixture/source").status_code == 404   # clip without an original
+    assert client.get("/clips/nope/source").status_code == 404
+    src["original"]["path"] = "../../etc/passwd"                     # never outside data/clips
+    (clips / "c1" / "source.json").write_text(_json.dumps(src))
+    assert client.get("/clips/c1/original").status_code == 404

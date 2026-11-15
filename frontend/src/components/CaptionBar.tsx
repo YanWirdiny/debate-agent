@@ -14,6 +14,8 @@ export interface Line {
   t_end: number;
   words?: PartialWord[];
   final: boolean;
+  /** Heard by the viewer but never analysed (original mode: a cut of the trimmed clip). */
+  unchecked?: boolean;
 }
 
 /** Final sentences plus the live partial (if it is not final yet), in speaking order. */
@@ -90,6 +92,11 @@ export function CaptionBar({ lines, bySegment, removed, displayTime }: Props) {
         return (
           <p key={l.segment_id} className={mod ? "text-zinc-400" : "text-white"}>
             <span className={`mr-2 font-semibold ${mod ? "text-zinc-500" : "text-amber-200"}`}>{speakerName(l.speaker_id)}:</span>
+            {l.unchecked && !mod && (
+              <span className="mr-2 rounded border border-zinc-600 px-1.5 py-0.5 align-middle text-xs font-normal text-zinc-400" title="Outside the analysed excerpt: captions only, no fact-check">
+                not fact-checked
+              </span>
+            )}
             {mod ? text : <AnnotatedText text={text} annotations={anns} removed={removed} />}
             {speaking && <span className="ml-1 inline-block h-[0.9em] w-[2px] translate-y-[2px] animate-pulse bg-current opacity-60" aria-hidden />}
           </p>

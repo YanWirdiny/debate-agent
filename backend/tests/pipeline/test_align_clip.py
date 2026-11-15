@@ -28,3 +28,24 @@ def test_recovers_pieces_and_cuts():
     expected_orig = [40, 40 + 8 + 5, 40 + 8 + 5 + 11 + 12]
     for p, (a, b), o in zip(edl, pieces, expected_orig):
         assert abs(p["trim_start"] - a) <= 0.05 and abs(p["orig_start"] - o) <= 0.05 and p["score"] > 0.9
+
+
+def test_cut_captions_names_speakers_skips_pieces_and_applies_overrides():
+    edl = [{"trim_start": 0, "trim_end": 2, "orig_start": 10}, {"trim_start": 2, "trim_end": 4, "orig_start": 20}]
+    timeline = [{"t_start": 0, "t_end": 2, "speaker_id": "moderator", "role": "moderator"},
+                {"t_start": 2, "t_end": 4, "speaker_id": "harris", "role": "speaker"}]
+    segments = [{"t_start": 0, "t_end": 2, "text": "Your question?"}, {"t_start": 2, "t_end": 4, "text": "My plan plan works."}]
+
+    def w(t, spk, text):
+        return {"start": t, "end": t + 0.3, "speaker": spk, "word": text.lower(), "punctuated_word": text}
+    words = [w(10.2, 0, "Your"), w(10.6, 0, "question?"),            # piece 1: speaker 0 = moderator
+             w(13.0, 1, "Thanks."), w(14.0, 1, "So"), w(14.4, 1, "anyway"),  # cut: speaker 1 (named in piece 2)
+             w(19.8, 1, "big"),                                       # straddles piece 2 start, not in transcript: kept
+             w(20.2, 1, "My"), w(20.6, 1, "plan"), w(21.0, 1, "plan."),       # piece 2: speaker 1 = harris
+             w(21.85, 1, "works."),                                   # straddles piece 2 end (22 s), duplicate: skipped
+             w(25.0, 1, "Over"), w(25.4, 1, "to"), w(25.8, 1, "you.")]
+    lines = ac.cut_captions(words, edl, timeline, {"start": 10, "end": 30}, [(24.9, 25.5, "moderator", "moderator")], segments)
+    assert [(l["speaker_id"], l["text"]) for l in lines] == [
+        ("harris", "Thanks."), ("harris", "So anyway"), ("harris", "big"),  # a 5 s pause starts a new line
+        ("moderator", "Over"), ("harris", "to you.")]                    # override covers "Over" only
+    assert lines[0]["words"][0] == {"text": "Thanks.", "t_start": 13.0, "t_end": 13.3}

@@ -7,6 +7,10 @@ audio alone, so nobody has to time the cuts by hand.
 
     python scripts/align_clip.py economy_v2 path/to/original.mp4            # print the EDL
     python scripts/align_clip.py economy_v2 path/to/original.mp4 --write    # + data/clips/<id>/source.json
+    python scripts/align_clip.py economy_v2 path/to/original.mp4 --write --captions
+        # + captions for the cut regions: one Deepgram prerecorded call on the window of the original
+        #   (cached in data/raw/), speakers named by voting against the clip timeline on the kept pieces.
+        #   They are shown to the viewer as "not fact-checked"; the agent never analyses them.
 
 Method (numpy only): both files are decoded to 8 kHz mono with ffmpeg and turned into 32 log-band
 energies every 10 ms. Each 3 s window of the trimmed clip is located in the original by normalized
@@ -19,7 +23,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
+from collections import Counter
 import sys
 from pathlib import Path
 
@@ -37,6 +43,8 @@ CHUNK_S = 3.0
 STEP_S = 1.0
 MIN_SCORE = 0.6     # below this a window is silence/noise and is not trusted
 SAME_OFFSET_FRAMES = 3
+SENTENCE_GAP_S = 1.2   # cut captions: a pause this long starts a new caption line
+MAX_LINE_WORDS = 25
 
 
 def decode(path: Path) -> np.ndarray:
@@ -163,6 +171,107 @@ def align(trim: np.ndarray, orig: np.ndarray) -> list[dict]:
     return edl
 
 
+def parse_override(item: str) -> tuple[float, float, str, str]:
+    """"140.7-142.2=moderator:moderator" -> (140.7, 142.2, "moderator", "moderator")"""
+    rng, _, who = item.partition("=")
+    a, _, b = rng.partition("-")
+    speaker_id, _, role = who.partition(":")
+    role = role or "speaker"
+    if not speaker_id or role not in ("speaker", "moderator"):
+        raise ValueError(f"bad --override {item!r}; expected START-END=speaker_id[:moderator]")
+    return float(a), float(b), speaker_id, role
+
+
+def _norm(word: str) -> str:
+    return re.sub(r"[^a-z0-9$%]", "", word.lower())
+
+
+def cut_captions(words: list[dict], edl: list[dict], timeline: list[dict], window: dict,
+                 overrides: list[tuple[float, float, str, str]] = (), segments: list[dict] = ()) -> list[dict]:
+    """Caption lines (original time) for the words the viewer hears in the cuts.
+
+    `words`: Deepgram words in original time (start, end, speaker, punctuated_word). A Deepgram
+    speaker is named by majority vote over its words inside kept pieces, where the clip timeline
+    says who is speaking; a speaker never heard in a piece stays "unknown".
+    """
+    pieces = [(p["orig_start"], p["orig_start"] + p["trim_end"] - p["trim_start"], p["orig_start"] - p["trim_start"]) for p in edl]
+
+    def piece_of(t: float):
+        return next((pc for pc in pieces if pc[0] <= t < pc[1]), None)
+
+    # First/last word of the analysed transcript inside each piece (trimmed time -> piece).
+    edges: list[tuple[str, str]] = []
+    for p in edl:
+        # A segment belongs to the piece holding its midpoint (its start can sit ms before the cut).
+        inside = [sg["text"].split() for sg in segments if p["trim_start"] <= (sg["t_start"] + sg["t_end"]) / 2 < p["trim_end"]]
+        flat = [w for ws in inside for w in ws]
+        edges.append((_norm(flat[0]), _norm(flat[-1])) if flat else ("", ""))
+
+    def duplicate_edge_word(w: dict) -> bool:
+        """A word straddling a cut is skipped only if the analysed transcript already has it there."""
+        for (o_s, o_e, _), (first, last) in zip(pieces, edges):
+            if w["start"] < o_e and w["end"] > o_s:
+                if not segments:
+                    return True
+                text = _norm(w.get("punctuated_word") or w["word"])
+                return (w["start"] < o_s and text == first) or (w["end"] > o_e and text == last) or o_s <= w["start"] and w["end"] <= o_e
+        return False
+
+    def who(t_trim: float):
+        e = next((e for e in timeline if e["t_start"] <= t_trim < e["t_end"]), None)
+        return (e["speaker_id"], e["role"]) if e else None
+
+    votes: dict[int, Counter] = {}
+    for w in words:
+        mid = (w["start"] + w["end"]) / 2
+        pc = piece_of(mid)
+        if pc and (known := who(mid - pc[2])):
+            votes.setdefault(w.get("speaker", -1), Counter())[known] += 1
+    names = {spk: c.most_common(1)[0][0] for spk, c in votes.items()}
+
+    lines: list[dict] = []
+    for w in words:
+        mid = (w["start"] + w["end"]) / 2
+        inside = piece_of(mid) and piece_of(w["start"]) and piece_of(w["end"] - 1e-3)
+        if inside or duplicate_edge_word(w) or not (window["start"] <= mid <= window["end"]):
+            continue
+        speaker_id, role = names.get(w.get("speaker", -1), ("unknown", "speaker"))
+        for a, b, sid, r in overrides:  # hand fixes win over diarization
+            if a <= mid <= b:
+                speaker_id, role = sid, r
+        text = w.get("punctuated_word") or w["word"]
+        cur = lines[-1] if lines else None
+        new = (cur is None or cur["speaker_id"] != speaker_id or w["start"] - cur["t_end"] > SENTENCE_GAP_S
+               or re.search(r"[.?!]$", cur["words"][-1]["text"]) or len(cur["words"]) >= MAX_LINE_WORDS)
+        if new:
+            cur = {"t_start": round(w["start"], 2), "t_end": round(w["end"], 2), "speaker_id": speaker_id, "role": role, "text": "", "words": []}
+            lines.append(cur)
+        cur["words"].append({"text": text, "t_start": round(w["start"], 2), "t_end": round(w["end"], 2)})
+        cur["t_end"] = round(w["end"], 2)
+        cur["text"] = " ".join(x["text"] for x in cur["words"])
+    return lines
+
+
+def transcribe_window(original: Path, start: float, end: float, cache: Path) -> list[dict]:
+    """Deepgram prerecorded (diarized) on [start, end] of the original; word times in original time."""
+    if not cache.exists():
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from app.db import lenient_settings
+        from scripts.label_clip import transcribe
+        wav = cache.with_suffix(".wav")
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(start), "-to", str(end), "-i", str(original),
+                        "-ac", "1", "-ar", "16000", "-sample_fmt", "s16", str(wav)], check=True)
+        resp = transcribe(wav, lenient_settings().deepgram_api_key.get_secret_value())
+        cache.write_text(json.dumps({"window_start": start, "response": resp}))
+        wav.unlink()
+    data = json.loads(cache.read_text())
+    alts = data["response"]["results"]["channels"][0]["alternatives"]
+    words = alts[0].get("words", []) if alts else []
+    off = data["window_start"]
+    return [{**w, "start": w["start"] + off, "end": w["end"] + off} for w in words]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("clip_id")
@@ -170,6 +279,9 @@ def main() -> None:
     ap.add_argument("--trimmed", type=Path, help="default: data/clips/<id>/audio.wav")
     ap.add_argument("--url", default="", help="where the original comes from (stored in source.json)")
     ap.add_argument("--write", action="store_true", help="write data/clips/<id>/source.json")
+    ap.add_argument("--captions", action="store_true", help="with --write: transcribe the cuts (Deepgram, once)")
+    ap.add_argument("--override", action="append", default=[], metavar="START-END=SPEAKER[:moderator]",
+                    help="cut captions: who speaks in [START, END] (original seconds), when diarization is wrong")
     args = ap.parse_args()
     clip_dir = CLIPS / args.clip_id
     trimmed = args.trimmed or clip_dir / "audio.wav"
@@ -198,6 +310,17 @@ def main() -> None:
                "window": {"start": edl[0]["orig_start"],
                           "end": round(edl[-1]["orig_start"] + edl[-1]["trim_end"] - edl[-1]["trim_start"], 2)},
                "edl": edl}
+        if args.captions:
+            tl_path = clip_dir / "timeline.json"
+            timeline = json.loads(tl_path.read_text()) if tl_path.exists() else json.loads((clip_dir / "clip.json").read_text())["timeline"]
+            cache = ROOT / "data" / "raw" / f"{args.clip_id}_original_deepgram.json"
+            words = transcribe_window(args.original, out["window"]["start"], out["window"]["end"], cache)
+            tr_path = clip_dir / "transcript.jsonl"
+            segments = [json.loads(x) for x in tr_path.read_text().splitlines() if x.strip()] if tr_path.exists() else []
+            out["cut_captions"] = cut_captions(words, edl, timeline, out["window"], [parse_override(o) for o in args.override], segments)
+            print(f"\ncut captions: {len(out['cut_captions'])} lines")
+            for line in out["cut_captions"]:
+                print(f"  {line['t_start']:7.2f}-{line['t_end']:7.2f}  {line['speaker_id']:10} {line['text'][:90]}")
         (clip_dir / "source.json").write_text(json.dumps(out, indent=2) + "\n")
         print(f"\nwrote {clip_dir / 'source.json'}")
 

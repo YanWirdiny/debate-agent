@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { audienceDelay, useDisplayTime, useVideoSync } from "../clock";
+import { audienceDelay, clipTimeNow, useDisplayTime, useVideoSync } from "../clock";
+import { fetchSource, inCut, originalLines, toOrig, type ClipSource } from "../original";
 import { buildLines, CAPTION_LINES, CaptionBar, reachedLines, revealedChars } from "../components/CaptionBar";
 import { SideRail } from "../components/SideRail";
 import { annotationsBySegment, useView } from "../store";
@@ -9,7 +10,12 @@ import type { Segment } from "../types";
 /** Audience: video full width, two caption lines revealed at the speaker's pace with flagged spans,
  *  side rail for older flags. Receives only public flags (the server applies the verification gate).
  *  Plays `audienceDelay()` seconds behind the live pipeline so captions and flags are never ahead of
- *  the picture and analysis latency is hidden (broadcast delay). */
+ *  the picture and analysis latency is hidden (broadcast delay).
+ *
+ *  Original mode (default when the clip has a source.json; `?trimmed` to opt out): the agent analyses
+ *  the trimmed clip while the viewer watches the untrimmed original from the window start. Everything
+ *  runs on original-video time; the cuts get captions only ("not fact-checked"), and the agent is
+ *  ahead of the viewer by the length of the cuts. */
 export function Audience() {
   const setSession = useView((s) => s.setSession);
   const clipId = useView((s) => s.clipId);
@@ -22,6 +28,8 @@ export function Audience() {
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const [videoOk, setVideoOk] = useState(true);
   const [joined, setJoined] = useState(false);
+  const [source, setSource] = useState<ClipSource | null>(null);
+  const wantOriginal = useMemo(() => !new URLSearchParams(location.search).has("trimmed"), []);
   const refresh = useRef(async () => {
     const st = await fetchState();
     if (st) setSession({ clipId: st.clip_id, sessionId: st.session_id, t0Wall: st.t0_wall, speed: st.speed });
@@ -34,14 +42,22 @@ export function Audience() {
     void refresh.current();
   }, []);
   useEffect(() => setVideoOk(true), [clipId]);
+  useEffect(() => {
+    setSource(null);
+    if (clipId && wantOriginal) void fetchSource(clipId).then(setSource);
+  }, [clipId, wantOriginal]);
+  const orig = source && videoOk ? source : null;
   const delay = useMemo(() => audienceDelay(), []);
-  useVideoSync(video, joined && videoOk, delay);
-  const displayTime = useDisplayTime(joined && videoOk ? video : null, delay);
+  useVideoSync(video, joined && videoOk, delay, orig?.window.start ?? 0, orig?.window.end ?? Infinity);
+  const displayTime = useDisplayTime(joined && videoOk ? video : null, delay, 100, orig?.window.start ?? 0);
 
   const bySegment = useMemo(() => annotationsBySegment(annotations), [annotations]);
   const segIndex = useMemo(() => Object.fromEntries(segments.map((s) => [s.segment_id, s])) as Record<string, Segment>, [segments]);
   // Only what the viewer has already heard: segments reached by the video, flags whose span was spoken.
-  const lines = useMemo(() => buildLines(segments, partial, wordTimes), [segments, partial, wordTimes]);
+  const lines = useMemo(() => {
+    const trimmed = buildLines(segments, partial, wordTimes);
+    return orig ? originalLines(trimmed, orig) : trimmed;
+  }, [segments, partial, wordTimes, orig]);
   const reached = reachedLines(lines, displayTime);
   const reachedKey = reached.length ? reached[reached.length - 1].segment_id : "";
   const railFlags = useMemo(() => {
@@ -65,7 +81,7 @@ export function Audience() {
             <video
               ref={setVideo}
               key={clipId}
-              src={`/clips/${encodeURIComponent(clipId)}/video`}
+              src={`/clips/${encodeURIComponent(clipId)}/${orig ? "original" : "video"}`}
               className="h-full max-h-[70vh] w-full object-contain lg:max-h-none"
               playsInline
               muted={!joined}
@@ -85,6 +101,7 @@ export function Audience() {
             </button>
           )}
           {conn !== "open" && <span className="absolute top-3 right-3 rounded bg-amber-600 px-2 py-1 text-xs font-semibold">Reconnecting…</span>}
+          {orig && joined && <AgentLead source={orig} displayTime={displayTime} />}
         </div>
         <CaptionBar lines={lines} bySegment={bySegment} removed={removed} displayTime={displayTime} />
         <Legend />
@@ -92,6 +109,27 @@ export function Audience() {
       <div className="h-72 shrink-0 lg:h-auto lg:w-80">
         <SideRail flags={railFlags} segments={segIndex} removed={removed} />
       </div>
+    </div>
+  );
+}
+
+/** "Agent is N s ahead": how far the analysis (live on the trimmed clip) is ahead of the picture, and
+ *  whether the viewer is in a cut that was never analysed. Shown in original mode only. */
+function AgentLead({ source, displayTime }: { source: ClipSource; displayTime: number | null }) {
+  const t0 = useView((s) => s.t0Wall);
+  const speed = useView((s) => s.speed);
+  if (displayTime == null) return null;
+  const agent = clipTimeNow(t0, speed);
+  const trimmedEnd = source.edl.length ? source.edl[source.edl.length - 1].trim_end : 0;
+  const agentDone = agent != null && agent >= trimmedEnd;
+  const lead = agent == null ? 0 : toOrig(Math.min(agent, trimmedEnd), source.edl) - displayTime;
+  const cut = inCut(displayTime, source);
+  return (
+    <div className="absolute top-3 left-3 flex flex-col items-start gap-1 text-xs">
+      <span className="rounded bg-black/70 px-2 py-1 font-mono text-emerald-300">
+        {agentDone ? "Agent finished the excerpt" : lead > 0.5 ? `Agent is ${Math.round(lead)} s ahead` : "Agent is live"}
+      </span>
+      {cut && <span className="rounded bg-black/70 px-2 py-1 text-zinc-300">Outside the analysed excerpt · captions only</span>}
     </div>
   );
 }
