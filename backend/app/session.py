@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -17,6 +16,8 @@ from typing import Any, Awaitable, Callable, Literal
 import websockets
 
 from app import db as dbm
+from app.config import env_float
+from app.llm.cache import CACHE
 from app import ingest
 from app.aggregator import DEFAULT_AUDIENCE_MIN_CONF, Aggregator
 from app.eventlog import EventSink, EventWriter, load_session_events, verify_chain
@@ -51,12 +52,15 @@ WARMUP_SILENCE_S = 1.0
 MAX_RECONNECTS = 3
 FINAL_RESULTS_TIMEOUT_S = 10.0
 SUMMARY_EVERY_TURNS = 6
-ASYNC_JOB_TIMEOUT_S = 20.0  # Gemini grounded verdict / prefetch / summarize
+# Gemini grounded verdict (search + page fetch) / prefetch / summarize. Off the hot path: original
+# mode gives the agent ~1 min of lead, so a slow verdict is still in time. Settable from .env.
+ASYNC_JOB_TIMEOUT_S = env_float("ASYNC_JOB_TIMEOUT_S", 45.0)
 ASYNC_WORKERS = 2
-# _lane cancels a lane that exceeds this. Every lane budget derives from it. 1.2 s is the design
-# target; on Groq's free-tier reasoning models (~0.5 s a call) run with LANE_TIMEOUT_S=2.5 in the
-# environment. The audience view is delayed 2.5 s, so a flag still lands with its line.
-LANE_TIMEOUT_S = float(os.environ.get("LANE_TIMEOUT_S", "1.2"))
+# _lane cancels a lane that exceeds this. Every lane budget derives from it, including the share
+# the Groq/Gemini pair keeps for its fallback (app/llm/client.py). 1.2 s is the design target; on
+# Groq's free tier use 2.5, and with LLM_PROVIDER=gemini (Gemini first, ~2-3 s) use 6-10.
+# Read from the environment or backend/.env.
+LANE_TIMEOUT_S = env_float("LANE_TIMEOUT_S", 1.2)
 
 Source = Literal["replay", "deepgram", "events"]
 
@@ -411,6 +415,9 @@ class SessionRunner:
             t.cancel()
         await asyncio.gather(*self._background, return_exceptions=True)
         await self.aggregator.stop()
+        if CACHE.hits or CACHE.misses:
+            log.info("analysis cache for %s: %d reused, %d new (since server start); stored per prompt: %s",
+                     self.session_id, CACHE.hits, CACHE.misses, CACHE.stats()["stored"])
         self.writer.put("session_end", {"session_id": self.session_id, "metrics": self.metrics.snapshot().model_dump(),
                                         "p95_bank_ms": self.metrics.p95_bank_ms, "lane_timeouts": self.lane_timeouts,
                                         "async_timeouts": self.async_timeouts, "reconnects": self.reconnects})

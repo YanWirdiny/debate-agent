@@ -71,9 +71,16 @@ export function Operator() {
   useEffect(() => {
     if (conn === "open") void fetchState().then(setServer);
   }, [conn]);
+  // The operator is the only view now, so the preview carries the sound. A browser that blocks
+  // autoplay with sound gets it muted by useVideoSync; the button turns it back on (a user gesture).
+  const [sound, setSound] = useState(true);
   useEffect(() => {
-    if (video) video.muted = true; // the preview never makes sound; the audience tab is the audio
-  }, [video]);
+    if (!video) return;
+    video.muted = !sound;
+    const onVolume = () => setSound(!video.muted);
+    video.addEventListener("volumechange", onVolume);
+    return () => video.removeEventListener("volumechange", onVolume);
+  }, [video, sound]);
   // The audience watches the original when the clip has one (Audience.tsx): mirror it exactly.
   const orig = source && videoOk ? source : null;
   // Where the audience is, in trimmed-clip seconds (what the transcript uses). Original mode: the
@@ -97,10 +104,10 @@ export function Operator() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100 lg:h-screen">
+    <div className="flex min-h-[calc(100dvh-3rem)] flex-col bg-zinc-950 text-zinc-100 lg:h-[calc(100dvh-3rem)]">
       <header className="flex flex-wrap items-center gap-3 border-b border-zinc-800 px-4 py-3">
         <Link to="/" className="font-bold tracking-tight">
-          BS Subtitles <span className="font-normal text-zinc-500">operator</span>
+          Operator
         </Link>
         <select
           value={clip}
@@ -139,14 +146,10 @@ export function Operator() {
         </span>
         <span className="ml-auto flex items-center gap-3 text-sm">
           {sessionId && (
-            <Link to={`/reports/${encodeURIComponent(sessionId)}`} className="text-zinc-300 underline hover:text-white" target="_blank">
+            <Link to={`/reports/${encodeURIComponent(sessionId)}`} className="text-zinc-300 underline hover:text-zinc-100" target="_blank">
               Report
             </Link>
           )}
-          {/* Named target: reuse one audience tab instead of stacking audible copies. */}
-          <a href="/audience" target="bs-audience" className="text-zinc-300 underline hover:text-white">
-            Audience view
-          </a>
           <span className={`h-2.5 w-2.5 rounded-full ${conn === "open" ? "bg-emerald-500" : "bg-amber-500"}`} title={`socket ${conn}`} />
         </span>
       </header>
@@ -169,20 +172,24 @@ export function Operator() {
           <Transcript segments={shown} bySegment={bySegment} pending={pending} onKill={kill} live={phase === "live"} onAir={onAir} partial={partial} />
         </section>
         <aside className="border-t border-zinc-800 p-4 lg:w-96 lg:border-t-0 lg:border-l">
-          <div className="relative overflow-hidden rounded-lg bg-black">
+          <div className="relative overflow-hidden rounded-lg bg-zinc-900">
             {server?.clip_id && videoOk ? (
               <>
               <span className="absolute top-2 left-2 z-10 rounded bg-black/70 px-1.5 py-0.5 text-xs text-zinc-300">
                 {orig ? "original (as the audience sees it)" : "trimmed clip"}
               </span>
-              <video ref={setVideo} key={`${server.clip_id}:${orig ? "original" : "video"}`} src={`/clips/${encodeURIComponent(server.clip_id)}/${orig ? "original" : "video"}`} muted playsInline className="aspect-video w-full" onError={() => setVideoOk(false)} />
+              <button type="button" onClick={() => setSound((on) => !on)}
+                className="absolute top-2 right-2 z-10 rounded bg-black/70 px-2 py-0.5 text-xs text-zinc-200 hover:bg-black/90">
+                {sound ? "Sound on" : "Sound off: click to unmute"}
+              </button>
+              <video ref={setVideo} key={`${server.clip_id}:${orig ? "original" : "video"}`} src={`/clips/${encodeURIComponent(server.clip_id)}/${orig ? "original" : "video"}`} playsInline className="aspect-video w-full" onError={() => setVideoOk(false)} />
               </>
             ) : (
               <p className="aspect-video p-6 text-sm text-zinc-500">{server?.clip_id ? "No video for this clip." : "Load a clip."}</p>
             )}
           </div>
           <p className="mt-2 text-xs text-zinc-500">
-            Preview = audience picture{orig ? " (untrimmed original" + (viewerAt != null && viewerAt >= 0 ? `, at ${fmtTime(viewerAt)}` : "") + ")" : ""}, {delay} s behind live{t0Wall ? "" : " once started"} (muted). Flags on lines marked
+            Preview = audience picture{orig ? " (untrimmed original" + (viewerAt != null && viewerAt >= 0 ? `, at ${fmtTime(viewerAt)}` : "") + ")" : ""}, {delay} s behind live{t0Wall ? "" : " once started"}. Flags on lines marked
             “not on air” can be killed before the audience sees them.
           </p>
           <Legend />

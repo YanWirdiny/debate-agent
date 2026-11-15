@@ -17,7 +17,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from app.interfaces import Emit, KnowledgeBase
-from app.lanes.consistency import run_consistency
+from app.lanes.consistency import NLI_BUDGET_S, run_consistency
 from app.llm.client import LLMError, groq_json
 from app.models import (Annotation, Category, Claim, ClaimRecord, ContractModel, Evidence, LaneContext, Passage,
                         Segment, SlowJob, VerdictJob, annotation_id)
@@ -156,6 +156,7 @@ async def _consistency(claim: Claim, seg: Segment, kb: KnowledgeBase, ledger: li
         return
     try:
         async with asyncio.timeout(_left(deadline)):
+            NLI_BUDGET_S.set(_left(deadline))  # see consistency.NLI_BUDGET_S
             await run_consistency(claim, seg, kb, ledger, emit)
     except (LLMError, TimeoutError):
         log.warning("consistency check skipped or failed on %s", seg.segment_id)  # stance result still ships

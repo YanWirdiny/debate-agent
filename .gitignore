@@ -9,6 +9,7 @@ __pycache__/
 node_modules/
 events.jsonl
 data/runs/
+data/cache/
 *.egg-info/
 data/raw/
 !data/clips/economy_v2/clip.mp4

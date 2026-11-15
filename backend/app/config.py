@@ -1,6 +1,9 @@
+import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from dotenv import dotenv_values
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,6 +21,28 @@ _LLM_MODELS = (
     "llm_model_gemini",
     "llm_model_gemini_fallback",
 )
+
+
+@lru_cache(maxsize=1)
+def _dotenv() -> dict[str, str | None]:
+    return dict(dotenv_values(ENV_FILE)) if ENV_FILE.is_file() else {}
+
+
+def env_float(name: str, default: float) -> float:
+    """A timing knob read at import time: the process environment first, then backend/.env.
+
+    Module constants (LANE_TIMEOUT_S, ...) are not Settings fields, and nothing loads .env into
+    os.environ, so without the .env lookup a value set there was silently ignored. Tests set
+    DEBATE_AGENT_DOTENV=0 so a developer's .env cannot change the timings they assert on.
+    """
+    raw = os.environ.get(name)
+    if raw is None and os.environ.get("DEBATE_AGENT_DOTENV", "1") != "0":
+        raw = _dotenv().get(name)
+    try:
+        value = float(raw) if raw not in (None, "") else default
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 class MissingRuntimeConfig(RuntimeError):
@@ -42,6 +67,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore", case_sensitive=False)
     deepgram_api_key: SecretStr = SecretStr("")
     groq_api_key: SecretStr = SecretStr("")
+    groq_api_key_2: SecretStr = SecretStr("")  # optional: used when a call on GROQ_API_KEY fails
     gemini_api_key: SecretStr = SecretStr("")
     google_factcheck_key: SecretStr = SecretStr("")
     mongodb_uri: SecretStr = SecretStr("mongodb://localhost:27017")
@@ -57,6 +83,7 @@ class Settings(BaseSettings):
     gemini_price_out_per_m: float = Field(default=3.75, ge=0)
     gemini_price_grounded_call: float = Field(default=0.014, ge=0)
     replay_transcript: bool = False
+    llm_cache: bool = True  # reuse stored analysis answers across runs (app/llm/cache.py); 0 = always call models
     replay_events: str = ""
     audience_min_conf: float = Field(default=0.80, ge=0, le=1)
     intel: Literal["fake", "real", "bank"] = "fake"  # fake lanes | full real intel | bank: real claims, Groq only

@@ -84,7 +84,14 @@ export function useVideoSync(video: HTMLVideoElement | null, enabled = true, del
       if (Number.isFinite(video.duration) && target > video.duration) return;
       if (Math.abs(video.currentTime - target) > DRIFT_MAX_S) video.currentTime = target;
       video.playbackRate = speed;
-      if (video.paused) void video.play().catch(() => undefined);
+      if (video.paused)
+        void video.play().catch(() => {
+          // Autoplay with sound blocked (no click on the page yet): play muted rather than not at all.
+          if (!video.muted) {
+            video.muted = true;
+            void video.play().catch(() => undefined);
+          }
+        });
     };
     sync();
     const id = window.setInterval(sync, DRIFT_CHECK_MS);

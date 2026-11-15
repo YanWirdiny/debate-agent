@@ -1,5 +1,5 @@
 """Async plane (CONTEXT.md 5.3 step 4, ARCHITECTURE.md section 8). Gemini only, never on the hot path.
-P1's workers call these with a 20 s timeout.
+P1's workers call these with ASYNC_JOB_TIMEOUT_S (app/session.py).
 
 - grounded_verdict: Gemini + Google Search on a U claim. The quote must appear on the fetched source
   page, or the update is operator-only (candidate, capped confidence). Same annotation_id; the
@@ -22,13 +22,16 @@ from pydantic import Field
 from app.intel import web
 from app.interfaces import KnowledgeBase
 from app.lanes.claims import VERDICT_CATEGORY
+from app.config import env_float
 from app.llm.client import gemini_json
+from app.session import ASYNC_JOB_TIMEOUT_S
 from app.models import Annotation, ContractModel, Evidence, Passage, PrefetchJob, Segment, SlowJob, VerdictJob
 from app.verify import stt_safe
 
 log = logging.getLogger(__name__)
 
-GEMINI_TIMEOUT_S = 15.0  # leaves room for the page fetch inside P1's 20 s job budget
+# Leaves room for the page fetch (web.FETCH_TIMEOUT_S) inside P1's ASYNC_JOB_TIMEOUT_S job budget.
+GEMINI_TIMEOUT_S = min(env_float("GEMINI_TIMEOUT_S", 30.0), ASYNC_JOB_TIMEOUT_S - web.FETCH_TIMEOUT_S - 1.0)
 UNVERIFIED_MAX_CONF = 0.6
 MAX_PREFETCH = 10
 SUMMARY_MAX_CHARS = 1200
