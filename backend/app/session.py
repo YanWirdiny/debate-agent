@@ -278,7 +278,7 @@ class SessionRunner:
         self._lane_tasks: set[asyncio.Task[Any]] = set()
         self._done = asyncio.Event()
         self._finishing = False
-        self.ended_clip_time: float | None = None  # set by _finish: seconds of clip played
+        self.ended_clip_time: float | None = None  # clip seconds played, captured when stopping, before cleanup
 
     @property
     def lane_timeouts(self) -> int:
@@ -401,11 +401,33 @@ class SessionRunner:
         self.drain_timeout = 0  # operator asked to stop: do not wait for pending web verdicts
         await self._finish()
 
+    def _played_clip_time(self) -> float:
+        """Seconds of the clip played so far, never past the clip when its length is known."""
+        if self.t0_wall is None:
+            return 0.0
+        played = max(0.0, (time.time() - self.t0_wall) * self.speed)
+        if self.clip.duration:
+            played = min(played, self.clip.duration)
+        return round(played, 2)
+
+    async def _broadcast_ended(self) -> None:
+        """Freeze both clocks at the time already played. Called before any waiting in `_finish`."""
+        if self.t0_wall is None or self.ended_clip_time is not None:
+            return
+        self.ended_clip_time = self._played_clip_time()
+        msg = EndedMessage(session_id=self.session_id, clip_time=self.ended_clip_time)
+        await asyncio.gather(self.operator.broadcast(msg), self.audience.broadcast(msg), return_exceptions=True)
+
     async def _finish(self) -> None:
         if self._finishing:
             await self._done.wait()
             return
         self._finishing = True
+        # Capture the played time and tell the views before lane drain, the slow queue, the
+        # writer, or Deepgram shutdown. Those waits run on after the operator stops (or the
+        # clip's audio ends). Measuring afterwards makes a mid-clip stop, or a clip with no
+        # duration, freeze the clock late.
+        await self._broadcast_ended()
         if self._lane_tasks:
             await asyncio.gather(*self._lane_tasks, return_exceptions=True)
         if self.drain_timeout > 0 and self._background:
@@ -430,11 +452,6 @@ class SessionRunner:
         if self.t0_wall is not None:
             self._db_task(dbm.save_session, self.session_id, ended_at=time.time(), event_count=self.writer.count,
                           lane_timeouts=self.lane_timeouts, reconnects=self.reconnects)
-            # Tell the views, so their clocks stop here instead of counting on forever.
-            played = max(0.0, (time.time() - self.t0_wall) * self.speed)
-            self.ended_clip_time = round(min(played, self.clip.duration) if self.clip.duration else played, 2)
-            msg = EndedMessage(session_id=self.session_id, clip_time=self.ended_clip_time)
-            await asyncio.gather(self.operator.broadcast(msg), self.audience.broadcast(msg), return_exceptions=True)
         self._done.set()
 
     def _db_task(self, fn: Callable[..., Awaitable[Any]], *args: Any, **kw: Any) -> None:

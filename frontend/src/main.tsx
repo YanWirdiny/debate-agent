@@ -6,6 +6,7 @@ import { LiveDemo, RecordedDemo } from "./site/Demo";
 import { Help } from "./site/Help";
 import { Home } from "./site/Home";
 import { Nav } from "./site/Nav";
+import { Audience } from "./views/Audience";
 import { Report } from "./views/Report";
 
 function ReportPage() {
@@ -25,6 +26,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/demo" element={<RecordedDemo />} />
         <Route path="/demo/live" element={<LiveDemo />} />
         <Route path="/operator" element={<Navigate to="/demo/live" replace />} />
+        <Route path="/audience" element={<Audience />} />
         <Route path="/help" element={<Help />} />
         <Route path="/reports/:id" element={<ReportPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

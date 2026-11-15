@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -199,13 +200,66 @@ async def test_end_to_end_replay_with_fake_lanes():
     types = [e.type for e in sink.events]
     assert types[0] == "session_start" and types[-1] == "session_end"
     assert types.count("segment") == len(SEGMENTS)
-    # Both views are told the session is over, with where the clip clock stopped (never past the clip).
+    # Both views are told where the clip clock stopped (never past the clip). The notice goes out
+    # before lane drain, so a late flag or metrics tick can still follow it.
     for msgs in (op_msgs, au_msgs):
         ended = [m for m in msgs if m["type"] == "ended"]
-        assert len(ended) == 1 and msgs[-1]["type"] == "ended"
+        assert len(ended) == 1
         assert ended[0]["session_id"] == "e2e" and ended[0]["clip_time"] >= SEGMENTS[-1].t_end - 1
         assert runner.clip.duration is None or ended[0]["clip_time"] <= runner.clip.duration
     assert runner.ended_clip_time == ended[0]["clip_time"]
+
+
+async def _ended_while_cleanup_is_blocked(clip, *, rewind_s: float = 0.0):
+    """Start a session, hold cleanup on a lane that never finishes, and return once `ended` is out."""
+    op, au = Hub("operator"), Hub("audience")
+    opc, auc = RecordingClient(), RecordingClient()
+    op.add(opc)
+    au.add(auc)
+    runner = SessionRunner("end", "fixture", clip=clip, operator=op, audience=au, sink=MemorySink(), speed=1)
+    await runner.warm_up()
+    await runner.start(lead_s=0)
+    if rewind_s:
+        runner.t0_wall = time.time() - rewind_s
+    release = asyncio.Event()
+
+    async def stuck() -> None:
+        await release.wait()
+
+    runner._lane_tasks.add(asyncio.create_task(stuck()))
+    stopping = asyncio.create_task(runner.stop())
+
+    async def wait_ended() -> None:
+        while not any(json.loads(m)["type"] == "ended" for m in opc.messages):
+            await asyncio.sleep(0.01)
+
+    try:
+        await asyncio.wait_for(wait_ended(), 1)
+        frozen = runner.ended_clip_time
+        assert not stopping.done()  # views were told before lane drain and the rest of shutdown
+        await asyncio.sleep(0.3)  # cleanup is still blocked; the frozen clock must not move with it
+        assert runner.ended_clip_time == frozen and not stopping.done()
+    finally:
+        release.set()
+        await asyncio.wait_for(stopping, 2)
+    ended = [json.loads(m) for m in opc.messages if json.loads(m)["type"] == "ended"]
+    audience = [json.loads(m) for m in auc.messages if json.loads(m)["type"] == "ended"]
+    assert len(ended) == 1 and ended == audience
+    assert runner.ended_clip_time == ended[0]["clip_time"]
+    return runner
+
+
+async def test_stop_freezes_clip_time_before_cleanup():
+    clip = ingest.load_clip("fixture").model_copy(update={"duration": None})
+    runner = await _ended_while_cleanup_is_blocked(clip)
+    # No duration to cap it, and cleanup was held well past this. The clock is the moment of the stop.
+    assert runner.ended_clip_time is not None and runner.ended_clip_time < 1
+
+
+async def test_ended_clip_time_stays_capped_when_cleanup_is_slow():
+    clip = ingest.load_clip("fixture").model_copy(update={"duration": 5.0})
+    runner = await _ended_while_cleanup_is_blocked(clip, rewind_s=100)
+    assert runner.ended_clip_time == 5.0
 
 
 def test_websocket_load_start_and_bad_message():
