@@ -228,7 +228,7 @@ def create_app(manager: SessionManager | None = None) -> FastAPI:
             return {"session_id": None, "clip_id": None, "t0_wall": None, "speed": mgr().speed,
                     "source": mgr().source, "intel": mgr().intel}
         return {"session_id": r.session_id, "clip_id": r.clip_id, "t0_wall": r.t0_wall, "speed": r.speed,
-                "source": r.source, "intel": r.intel.name}
+                "source": r.source, "intel": r.intel.name, "ended_clip_time": r.ended_clip_time}
 
     @app.get("/sessions")
     async def sessions_list() -> list[dict]:

@@ -117,7 +117,7 @@ export function Help() {
         <section className="border-t border-ink/15 py-14">
           <div className="flex flex-wrap items-baseline justify-between gap-4">
             <h2 className="display text-4xl md:text-6xl">Running a demo</h2>
-            <Link to="/demo" className="pill-yale">
+            <Link to="/demo/live" className="pill-yale">
               Open the demo
             </Link>
           </div>

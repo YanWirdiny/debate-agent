@@ -41,6 +41,7 @@ from app.models import (
     SlowJob,
     SpeakerDigest,
     StartedMessage,
+    EndedMessage,
     Word,
 )
 from app.segmenter import Segmenter
@@ -277,6 +278,7 @@ class SessionRunner:
         self._lane_tasks: set[asyncio.Task[Any]] = set()
         self._done = asyncio.Event()
         self._finishing = False
+        self.ended_clip_time: float | None = None  # set by _finish: seconds of clip played
 
     @property
     def lane_timeouts(self) -> int:
@@ -428,6 +430,11 @@ class SessionRunner:
         if self.t0_wall is not None:
             self._db_task(dbm.save_session, self.session_id, ended_at=time.time(), event_count=self.writer.count,
                           lane_timeouts=self.lane_timeouts, reconnects=self.reconnects)
+            # Tell the views, so their clocks stop here instead of counting on forever.
+            played = max(0.0, (time.time() - self.t0_wall) * self.speed)
+            self.ended_clip_time = round(min(played, self.clip.duration) if self.clip.duration else played, 2)
+            msg = EndedMessage(session_id=self.session_id, clip_time=self.ended_clip_time)
+            await asyncio.gather(self.operator.broadcast(msg), self.audience.broadcast(msg), return_exceptions=True)
         self._done.set()
 
     def _db_task(self, fn: Callable[..., Awaitable[Any]], *args: Any, **kw: Any) -> None:

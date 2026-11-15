@@ -28,18 +28,22 @@ export function clipTimeNow(t0Wall: number | null, speed: number): number | null
 export function useClipTime(ms = 250, delay = 0): number | null {
   const t0 = useView((s) => s.t0Wall);
   const speed = useView((s) => s.speed);
+  const endedAt = useView((s) => s.endedAt);
+  const duration = useView((s) => s.duration);
+  // The clock stops where the session ended, and never runs past the end of the clip.
+  const stop = Math.min(endedAt ?? Infinity, duration ?? Infinity);
   const now = () => {
     const t = clipTimeNow(t0, speed);
-    return t == null ? null : t - delay * speed;
+    return t == null ? null : Math.min(t, stop) - delay * speed;
   };
   const [t, setT] = useState(now);
   useEffect(() => {
     setT(now());
-    if (t0 == null) return;
+    if (t0 == null || endedAt != null) return; // ended: frozen, no more ticks
     const id = window.setInterval(() => setT(now()), ms);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t0, speed, ms, delay]);
+  }, [t0, speed, ms, delay, endedAt, duration]);
   return t;
 }
 

@@ -11,7 +11,7 @@ import { annotationsBySegment, type PendingMark, useView } from "../store";
 import type { Annotation, PartialMessage, Segment } from "../types";
 import { type ClipInfo, fetchClips, fetchState, type ServerState, useViewSocket } from "../ws";
 
-type Phase = "idle" | "loading" | "ready" | "starting" | "live";
+type Phase = "idle" | "loading" | "ready" | "starting" | "live" | "ended";
 
 /** Operator: load/start, full transcript with every flag (status, confidence, path, latency), kill,
  *  pending markers, latency + bank hit rate. */
@@ -37,6 +37,8 @@ export function Operator() {
     } else if (m.type === "started") {
       setPhase("live");
       void fetchState().then(setServer);
+    } else if (m.type === "ended") {
+      setPhase((p) => (p === "live" ? "ended" : p));
     } else if (m.type === "banner" && m.level === "error") setPhase((p) => (p === "loading" || p === "starting" ? "idle" : p));
   });
 
@@ -49,14 +51,17 @@ export function Operator() {
       setServer(st);
       if (st?.clip_id) {
         setClip(st.clip_id);
-        setSession({ sessionId: st.session_id, clipId: st.clip_id, t0Wall: st.t0_wall, speed: st.speed });
-        setPhase(st.t0_wall ? "live" : "ready");
+        const ended = st.ended_clip_time ?? null;
+        setSession({ sessionId: st.session_id, clipId: st.clip_id, t0Wall: st.t0_wall, speed: st.speed, endedAt: ended });
+        setPhase(ended != null ? "ended" : st.t0_wall ? "live" : "ready");
       }
     });
   }, [setSession]);
   useEffect(() => {
-    if (server) setSession({ clipId: server.clip_id, speed: server.speed });
-  }, [server, setSession]);
+    if (!server) return;
+    const duration = clips.find((c) => c.clip_id === server.clip_id)?.duration ?? null;
+    setSession({ clipId: server.clip_id, speed: server.speed, duration });
+  }, [server, clips, setSession]);
   useEffect(() => setVideoOk(true), [server?.clip_id]);
   // Re-asked on every state refresh (load, start, reconnect): one failed fetch while the backend was
   // restarting must not leave the preview on the trimmed clip for the rest of the page's life.
@@ -104,7 +109,7 @@ export function Operator() {
   };
 
   return (
-    <div className="flex min-h-[calc(100dvh-3rem)] flex-col bg-zinc-950 text-zinc-100 lg:h-[calc(100dvh-3rem)]">
+    <div className="flex min-h-[calc(100dvh-var(--chrome,3rem))] flex-col bg-zinc-950 text-zinc-100 lg:h-[calc(100dvh-var(--chrome,3rem))]">
       <header className="flex flex-wrap items-center gap-3 border-b border-zinc-800 px-4 py-3">
         <Link to="/" className="font-bold tracking-tight">
           Operator
@@ -136,6 +141,11 @@ export function Operator() {
         </button>
         <span className="text-sm text-zinc-400">
           {phase === "live" && <span className="mr-2 rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">LIVE</span>}
+          {phase === "ended" && (
+            <span className="mr-2 rounded border border-zinc-600 px-1.5 py-0.5 text-xs font-bold text-zinc-400" title="Load the clip again to run it again">
+              ENDED
+            </span>
+          )}
           {sessionId ?? "no session"} · <span className="tabular-nums">{fmtTime(clipTime)}</span>
           {server && (
             <>

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AnnotatedText } from "../components/AnnotatedText";
 import { FlagChip } from "../components/FlagChip";
 import { CATEGORIES } from "../categories";
 import type { Annotation, Category } from "../types";
 import { Nav } from "./Nav";
+import { PipelineStory } from "./PipelineStory";
 
 /* ------------------------------------------------------------------------------------------------
  * Presentation mode: every <section data-slide> is one screen. Arrow keys / PageUp/Down / Space move
@@ -132,157 +133,6 @@ function HeroCaption() {
   );
 }
 
-/* ------------------------------------------------------------------------------------------------
- * How it works: the diagram stays pinned while six steps scroll past; the active step lights its
- * part of the pipeline and a beam runs along its edges.
- * ---------------------------------------------------------------------------------------------- */
-
-type NodeId = "audio" | "stt" | "seg" | "claims" | "fallacy" | "consist" | "gate" | "show" | "log";
-const NODES: Record<NodeId, { x: number; y: number; label: string }> = {
-  audio: { x: 40, y: 150, label: "Audio" },
-  stt: { x: 150, y: 150, label: "Deepgram" },
-  seg: { x: 260, y: 150, label: "Sentences" },
-  claims: { x: 385, y: 70, label: "Claims" },
-  fallacy: { x: 385, y: 150, label: "Fallacy" },
-  consist: { x: 385, y: 230, label: "Consistency" },
-  gate: { x: 505, y: 150, label: "Gate" },
-  show: { x: 610, y: 90, label: "Captions" },
-  log: { x: 610, y: 215, label: "Event log" },
-};
-const EDGES: [NodeId, NodeId][] = [
-  ["audio", "stt"], ["stt", "seg"], ["seg", "claims"], ["seg", "fallacy"], ["seg", "consist"],
-  ["claims", "gate"], ["fallacy", "gate"], ["consist", "gate"], ["gate", "show"], ["gate", "log"],
-];
-
-const STORY: { title: string; body: string; nodes: NodeId[]; edges: string[]; ms: number }[] = [
-  { title: "Hear", body: "The debate audio streams to Deepgram as it plays. Words come back with timestamps measured from the start of the clip.", nodes: ["audio", "stt"], edges: ["audio-stt"], ms: 300 },
-  { title: "Split", body: "Words become sentences, each with its speaker from a hand-checked timeline. A moderator question sets the topic and starts fetching background in parallel.", nodes: ["seg"], edges: ["stt-seg"], ms: 350 },
-  { title: "Check", body: "Three lanes run at once on every sentence: claims against a reviewed claim bank or the web, eight kinds of fallacy, and consistency with what the speaker said before.", nodes: ["claims", "fallacy", "consist"], edges: ["seg-claims", "seg-fallacy", "seg-consist"], ms: 1250 },
-  { title: "Gate", body: "Code, not the model, checks every quote and span word for word. Only verified findings at 80 percent confidence or more reach the audience.", nodes: ["gate"], edges: ["claims-gate", "fallacy-gate", "consist-gate"], ms: 1300 },
-  { title: "Show", body: "The span is underlined in its finding's color with a letter beside it. Tap it for the explanation, the quote, the source and its date.", nodes: ["show"], edges: ["gate-show"], ms: 1350 },
-  { title: "Prove", body: "Every event is written to a hash-chained log. Reports and replays read only from that log, so what was shown can always be checked afterwards.", nodes: ["log"], edges: ["gate-log"], ms: 1350 },
-];
-
-function Pipeline({ step }: { step: number }) {
-  const lit = new Set(STORY.slice(0, step + 1).flatMap((s) => s.nodes));
-  const now = new Set(STORY[step].nodes);
-  const beams = new Set(STORY[step].edges);
-  return (
-    <svg viewBox="0 0 660 300" className="w-full" role="img" aria-label={`Pipeline, step ${step + 1}: ${STORY[step].title}`}>
-      {EDGES.map(([a, b]) => {
-        const id = `${a}-${b}`;
-        const A = NODES[a];
-        const B = NODES[b];
-        const on = lit.has(a) && lit.has(b);
-        return (
-          <g key={id}>
-            <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="currentColor" strokeOpacity={on ? 0.45 : 0.12} strokeWidth={1.5} />
-            {beams.has(id) && <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="#0D3C64" strokeWidth={2.5} strokeLinecap="round" className="beam" />}
-          </g>
-        );
-      })}
-      {(Object.keys(NODES) as NodeId[]).map((id) => {
-        const n = NODES[id];
-        const active = now.has(id);
-        const on = lit.has(id);
-        return (
-          <g key={id} style={{ transition: "opacity .4s" }} opacity={on ? 1 : 0.35}>
-            <circle cx={n.x} cy={n.y} r={active ? 13 : 9} fill={active ? "#B20716" : on ? "#0D3C64" : "#E8DDD2"} stroke="#02091E" strokeOpacity={0.35} style={{ transition: "all .4s" }} />
-            <text x={n.x} y={n.y + (id === "claims" ? -24 : 30)} textAnchor="middle" fontSize={12.5} fill="#02091E" fillOpacity={active ? 1 : 0.7} fontWeight={active ? 600 : 400}>
-              {n.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-function HowItWorks() {
-  const [step, setStep] = useState(0);
-  const refs = useRef<(HTMLDivElement | null)[]>([]);
-  useEffect(() => {
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) if (e.isIntersecting) setStep(Number((e.target as HTMLElement).dataset.step));
-      },
-      { rootMargin: "-50% 0px -50% 0px" },
-    );
-    refs.current.forEach((el) => el && io.observe(el));
-    return () => io.disconnect();
-  }, []);
-
-  // ← / → step through the six steps while this section is on screen. Past the last step, →
-  // goes on to the next slide; before the first, ← goes back to the previous one.
-  const stepRef = useRef(step);
-  stepRef.current = step;
-  const sectionRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-      if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select")) return;
-      const r = sectionRef.current?.getBoundingClientRect();
-      const mid = window.innerHeight / 2;
-      if (!r || r.top > mid || r.bottom < mid) return;
-      e.preventDefault();
-      const to = stepRef.current + (e.key === "ArrowRight" ? 1 : -1);
-      if (to >= 0 && to < STORY.length) {
-        refs.current[to]?.scrollIntoView({ behavior: "smooth", block: "center" });
-      } else {
-        document.querySelector(`[data-slide="${to < 0 ? 1 : 3}"]`)?.scrollIntoView({ behavior: "smooth" });
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-  const budget = 1500;
-  const ms = STORY[step].ms;
-  return (
-    <section ref={sectionRef} data-slide={2} id="how" className="relative bg-cream text-ink">
-      <div className="mx-auto grid max-w-6xl gap-10 px-6 lg:grid-cols-[1.15fr_1fr]">
-        <div className="sticky top-12 flex h-[calc(100dvh-3rem)] flex-col justify-center py-10">
-          <p className="eyebrow text-ink/60">How it works</p>
-          <h2 className="display mt-3 text-5xl md:text-6xl lg:text-7xl">
-            From a spoken sentence to a sourced flag in {(budget / 1000).toFixed(1)} seconds.
-          </h2>
-          <div className="mt-8 rounded-2xl border border-ink/10 bg-almond p-4">
-            <Pipeline step={step} />
-            <div className="mt-2 px-2">
-              <div className="flex justify-between font-mono text-xs text-ink/60">
-                <span>
-                  {step + 1} / {STORY.length} · {STORY[step].title} <span className="ml-2 text-ink/45">← → to step</span>
-                </span>
-                <span className="tabular-nums">
-                  {(ms / 1000).toFixed(2)} s of the {(budget / 1000).toFixed(1)} s design budget
-                </span>
-              </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10">
-                <div className="h-full rounded-full bg-yale transition-[width] duration-500" style={{ width: `${(ms / budget) * 100}%` }} />
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="pb-[30vh] lg:pt-[30vh]">
-          {STORY.map((s, i) => (
-            <div
-              key={s.title}
-              data-step={i}
-              ref={(el) => {
-                refs.current[i] = el;
-              }}
-              className={`flex min-h-[70vh] flex-col justify-center transition-opacity duration-500 ${i === step ? "opacity-100" : "opacity-30"}`}
-            >
-              <p className="font-mono text-sm text-ink/55">0{i + 1}</p>
-              <h3 className="display mt-2 text-6xl md:text-8xl">{s.title}</h3>
-              <p className="lead mt-5 max-w-lg">{s.body}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 /* ------------------------------------------------------------------------------------------------ */
 
 const EXAMPLES: Record<Category, string> = {
@@ -365,7 +215,7 @@ export function Home() {
       </section>
 
       {/* 2 · How it works */}
-      <HowItWorks />
+      <PipelineStory />
 
       {/* 3 · Findings */}
       <section data-slide={3} className="bg-almond text-ink">

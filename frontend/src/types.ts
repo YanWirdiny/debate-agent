@@ -92,6 +92,13 @@ export interface StartedMessage {
   t0_wall: number;
 }
 
+/** The session is over; `clip_time` = seconds of clip played (clocks freeze there). */
+export interface EndedMessage {
+  type: "ended";
+  session_id: string;
+  clip_time: number;
+}
+
 export interface RemovalMessage {
   type: "removal";
   annotation_id: string;
@@ -135,6 +142,7 @@ export type ServerMessage =
   | MetricsMessage
   | ReadyMessage
   | StartedMessage
+  | EndedMessage
   | RemovalMessage
   | BannerMessage
   | PendingMessage

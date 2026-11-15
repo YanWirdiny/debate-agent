@@ -29,6 +29,7 @@ SAMPLES = {
     "AnnotationUpdateMessage": dict(data=ANN),
     "MetricsMessage": dict(data=dict(p50_ms=100, p95_ms=200, bank_hit_rate=.5)),
     "ReadyMessage": dict(session_id="fixture"), "StartedMessage": dict(t0_wall=123.),
+    "EndedMessage": dict(session_id="fixture", clip_time=511.5),
     "RemovalMessage": dict(annotation_id=ANN["annotation_id"], status="killed"),
     "StartMessage": dict(clip_id="clip"), "KillMessage": dict(annotation_id=ANN["annotation_id"]),
     "LoadMessage": dict(clip_id="clip"), "BannerMessage": dict(level="warn", text="Deepgram reconnecting"),
@@ -47,7 +48,7 @@ def test_json_roundtrip(name):
     obj = MODELS[name].model_validate(SAMPLES[name])
     assert MODELS[name].model_validate_json(obj.model_dump_json()) == obj
 
-@pytest.mark.parametrize("alias,names", [(m.SlowJob, ["VerdictJob", "PrefetchJob"]), (m.ClientMessage, ["LoadMessage", "StartMessage", "KillMessage"]), (m.ServerMessage, ["SegmentMessage", "AnnotationMessage", "AnnotationUpdateMessage", "MetricsMessage", "ReadyMessage", "StartedMessage", "RemovalMessage", "BannerMessage", "PendingMessage", "PartialMessage"])])
+@pytest.mark.parametrize("alias,names", [(m.SlowJob, ["VerdictJob", "PrefetchJob"]), (m.ClientMessage, ["LoadMessage", "StartMessage", "KillMessage"]), (m.ServerMessage, ["SegmentMessage", "AnnotationMessage", "AnnotationUpdateMessage", "MetricsMessage", "ReadyMessage", "StartedMessage", "EndedMessage", "RemovalMessage", "BannerMessage", "PendingMessage", "PartialMessage"])])
 def test_discriminated_unions(alias, names):
     adapter = TypeAdapter(alias)
     for name in names:
