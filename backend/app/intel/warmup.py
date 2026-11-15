@@ -21,7 +21,7 @@ from app.llm.client import groq_json
 
 log = logging.getLogger(__name__)
 
-WARM_TIMEOUT_S = 8.0
+WARM_TIMEOUT_S = 20.0  # Gemini cold-start needs more headroom than Groq
 EMBED_HINT = ("embedding model not available locally; run `python scripts/embed_kb.py --download-model` "
               "once (needs internet) before the demo")
 

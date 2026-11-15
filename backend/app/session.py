@@ -296,7 +296,8 @@ class SessionRunner:
         self.ready = True
         log.info("warm-up for %s done in %.1fs (intel=%s, source=%s)", self.session_id, time.monotonic() - t,
                  self.intel.name, self.source)
-        await self.operator.broadcast(ReadyMessage(session_id=self.session_id))
+        msg = ReadyMessage(session_id=self.session_id)
+        await asyncio.gather(self.operator.broadcast(msg), self.audience.broadcast(msg))
 
     def speaker_ids(self) -> list[str]:
         """Non-moderator speakers of the clip, from the timeline (or the transcript)."""

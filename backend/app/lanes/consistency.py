@@ -20,7 +20,7 @@ from app.verify import stt_safe
 
 COSINE_MIN = 0.75
 MAX_CANDIDATES = 3
-NLI_TIMEOUT_S = 0.8
+NLI_TIMEOUT_S = 5.0
 SESSION_SOURCE = "this debate"
 
 
