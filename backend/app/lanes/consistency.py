@@ -8,6 +8,7 @@ Never "contradiction" or "flip-flop" (CONTEXT.md rule 4).
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 import math
 from typing import Literal
 
@@ -20,8 +21,12 @@ from app.verify import stt_safe
 
 COSINE_MIN = 0.75
 MAX_CANDIDATES = 3
-NLI_TIMEOUT_S = 0.8
+NLI_TIMEOUT_S = 5.0
 SESSION_SOURCE = "this debate"
+# The claims lane sets this to what is left of the lane, so the NLI call (and its Groq/Gemini
+# fallback window) ends inside the lane instead of being cancelled with it. The signature of
+# run_consistency is a frozen contract, hence a context variable rather than a parameter.
+NLI_BUDGET_S: ContextVar[float] = ContextVar("NLI_BUDGET_S", default=NLI_TIMEOUT_S)
 
 
 class NLI(ContractModel):
@@ -64,7 +69,7 @@ async def run_consistency(claim: Claim, seg: Segment, kb: KnowledgeBase, ledger:
     r = await groq_json("nli", {
         "claim": claim.decontextualized,
         "statements": [{"statement_id": s.statement_id, "date": s.date, "text": s.text} for s in prior],
-    }, NLI, timeout=NLI_TIMEOUT_S)
+    }, NLI, timeout=min(NLI_TIMEOUT_S, NLI_BUDGET_S.get()))
     nli = NLI.model_validate(r.data)
     if nli.relation != "contradicts":
         return

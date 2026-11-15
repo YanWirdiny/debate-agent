@@ -199,6 +199,13 @@ async def test_end_to_end_replay_with_fake_lanes():
     types = [e.type for e in sink.events]
     assert types[0] == "session_start" and types[-1] == "session_end"
     assert types.count("segment") == len(SEGMENTS)
+    # Both views are told the session is over, with where the clip clock stopped (never past the clip).
+    for msgs in (op_msgs, au_msgs):
+        ended = [m for m in msgs if m["type"] == "ended"]
+        assert len(ended) == 1 and msgs[-1]["type"] == "ended"
+        assert ended[0]["session_id"] == "e2e" and ended[0]["clip_time"] >= SEGMENTS[-1].t_end - 1
+        assert runner.clip.duration is None or ended[0]["clip_time"] <= runner.clip.duration
+    assert runner.ended_clip_time == ended[0]["clip_time"]
 
 
 def test_websocket_load_start_and_bad_message():

@@ -1,0 +1,68 @@
+[
+  {
+    "t_start": 0.0,
+    "t_end": 21.51,
+    "speaker_id": "moderator",
+    "role": "moderator"
+  },
+  {
+    "t_start": 21.98,
+    "t_end": 140.47,
+    "speaker_id": "harris",
+    "role": "speaker"
+  },
+  {
+    "t_start": 140.79,
+    "t_end": 142.55,
+    "speaker_id": "moderator",
+    "role": "moderator"
+  },
+  {
+    "t_start": 142.63,
+    "t_end": 255.43,
+    "speaker_id": "trump",
+    "role": "speaker"
+  },
+  {
+    "t_start": 255.43,
+    "t_end": 262.15,
+    "speaker_id": "moderator",
+    "role": "moderator"
+  },
+  {
+    "t_start": 262.58,
+    "t_end": 332.69,
+    "speaker_id": "harris",
+    "role": "speaker"
+  },
+  {
+    "t_start": 332.69,
+    "t_end": 334.5,
+    "speaker_id": "moderator",
+    "role": "moderator"
+  },
+  {
+    "t_start": 334.5,
+    "t_end": 407.28,
+    "speaker_id": "trump",
+    "role": "speaker"
+  },
+  {
+    "t_start": 407.28,
+    "t_end": 408.64,
+    "speaker_id": "moderator",
+    "role": "moderator"
+  },
+  {
+    "t_start": 409.5,
+    "t_end": 469.93,
+    "speaker_id": "harris",
+    "role": "speaker"
+  },
+  {
+    "t_start": 470.46,
+    "t_end": 511.5,
+    "speaker_id": "trump",
+    "role": "speaker"
+  }
+]

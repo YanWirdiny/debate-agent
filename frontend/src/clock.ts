@@ -28,18 +28,22 @@ export function clipTimeNow(t0Wall: number | null, speed: number): number | null
 export function useClipTime(ms = 250, delay = 0): number | null {
   const t0 = useView((s) => s.t0Wall);
   const speed = useView((s) => s.speed);
+  const endedAt = useView((s) => s.endedAt);
+  const duration = useView((s) => s.duration);
+  // The clock stops where the session ended, and never runs past the end of the clip.
+  const stop = Math.min(endedAt ?? Infinity, duration ?? Infinity);
   const now = () => {
     const t = clipTimeNow(t0, speed);
-    return t == null ? null : t - delay * speed;
+    return t == null ? null : Math.min(t, stop) - delay * speed;
   };
   const [t, setT] = useState(now);
   useEffect(() => {
     setT(now());
-    if (t0 == null) return;
+    if (t0 == null || endedAt != null) return; // ended: frozen, no more ticks
     const id = window.setInterval(() => setT(now()), ms);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t0, speed, ms, delay]);
+  }, [t0, speed, ms, delay, endedAt, duration]);
   return t;
 }
 
@@ -84,7 +88,14 @@ export function useVideoSync(video: HTMLVideoElement | null, enabled = true, del
       if (Number.isFinite(video.duration) && target > video.duration) return;
       if (Math.abs(video.currentTime - target) > DRIFT_MAX_S) video.currentTime = target;
       video.playbackRate = speed;
-      if (video.paused) void video.play().catch(() => undefined);
+      if (video.paused)
+        void video.play().catch(() => {
+          // Autoplay with sound blocked (no click on the page yet): play muted rather than not at all.
+          if (!video.muted) {
+            video.muted = true;
+            void video.play().catch(() => undefined);
+          }
+        });
     };
     sync();
     const id = window.setInterval(sync, DRIFT_CHECK_MS);

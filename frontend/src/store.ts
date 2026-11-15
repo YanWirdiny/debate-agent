@@ -30,6 +30,10 @@ export interface ViewState {
   clipId: string | null;
   t0Wall: number | null;
   speed: number;
+  /** Clip seconds where the session ended (clocks freeze here); null while live or before start. */
+  endedAt: number | null;
+  /** Clip length in seconds, if known: clocks never count past it. */
+  duration: number | null;
   segments: Segment[];
   /** The sentence being spoken right now (not final yet). */
   partial: PartialMessage | null;
@@ -43,7 +47,7 @@ export interface ViewState {
   metrics: MetricsSnapshot | null;
   banners: Banner[];
   setConn: (c: ConnState) => void;
-  setSession: (s: { sessionId?: string | null; clipId?: string | null; t0Wall?: number | null; speed?: number }) => void;
+  setSession: (s: { sessionId?: string | null; clipId?: string | null; t0Wall?: number | null; speed?: number; endedAt?: number | null; duration?: number | null }) => void;
   apply: (m: ServerMessage) => void;
   dismissBanner: (id: number) => void;
   reset: () => void;
@@ -68,20 +72,24 @@ export const useView = create<ViewState>((set) => ({
   clipId: null,
   t0Wall: null,
   speed: 1,
+  endedAt: null,
+  duration: null,
   banners: [],
   ...empty,
   setConn: (conn) => set({ conn }),
   setSession: (s) => set((st) => ({ ...st, ...Object.fromEntries(Object.entries(s).filter(([, v]) => v !== undefined)) })),
   dismissBanner: (id) => set((st) => ({ banners: st.banners.filter((b) => b.id !== id) })),
-  reset: () => set({ ...empty, t0Wall: null }),
+  reset: () => set({ ...empty, t0Wall: null, endedAt: null }),
   apply: (m) =>
     set((st) => {
       switch (m.type) {
         case "ready":
           // A new session was loaded: clear the previous run.
-          return { ...empty, sessionId: m.session_id, t0Wall: null, banners: [] };
+          return { ...empty, sessionId: m.session_id, t0Wall: null, endedAt: null, banners: [] };
         case "started":
-          return { t0Wall: m.t0_wall };
+          return { t0Wall: m.t0_wall, endedAt: null };
+        case "ended":
+          return m.session_id === st.sessionId || st.sessionId == null ? { endedAt: m.clip_time, partial: null } : {};
         case "segment": {
           if (st.segments.some((s) => s.segment_id === m.data.segment_id)) return {};
           if (st.sessionId && m.data.session_id !== st.sessionId) {

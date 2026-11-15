@@ -206,6 +206,13 @@ class StartedMessage(ContractModel):
     type: Literal["started"] = "started"
     t0_wall: float
 
+class EndedMessage(ContractModel):
+    """The session is over (clip played out, operator stopped it, or a new clip was loaded).
+    `clip_time`: seconds of clip played, so views freeze their clock there instead of counting on."""
+    type: Literal["ended"] = "ended"
+    session_id: str
+    clip_time: float
+
 class RemovalMessage(ContractModel):
     type: Literal["removal"] = "removal"
     annotation_id: str
@@ -254,7 +261,7 @@ class KillMessage(ContractModel):
     type: Literal["kill"] = "kill"
     annotation_id: str
 
-ServerMessage = Annotated[SegmentMessage | AnnotationMessage | AnnotationUpdateMessage | MetricsMessage | ReadyMessage | StartedMessage | RemovalMessage | BannerMessage | PendingMessage | PartialMessage, Field(discriminator="type")]
+ServerMessage = Annotated[SegmentMessage | AnnotationMessage | AnnotationUpdateMessage | MetricsMessage | ReadyMessage | StartedMessage | EndedMessage | RemovalMessage | BannerMessage | PendingMessage | PartialMessage, Field(discriminator="type")]
 ClientMessage = Annotated[LoadMessage | StartMessage | KillMessage, Field(discriminator="type")]
 
 def segment_id(session_id: str, seq: int) -> str:

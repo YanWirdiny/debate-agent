@@ -19,6 +19,7 @@ WIRE_MODELS = (
     "MetricsMessage",
     "ReadyMessage",
     "StartedMessage",
+    "EndedMessage",
     "RemovalMessage",
     "BannerMessage",
     "PendingMessage",

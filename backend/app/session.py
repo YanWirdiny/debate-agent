@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -17,6 +16,8 @@ from typing import Any, Awaitable, Callable, Literal
 import websockets
 
 from app import db as dbm
+from app.config import env_float
+from app.llm.cache import CACHE
 from app import ingest
 from app.aggregator import DEFAULT_AUDIENCE_MIN_CONF, Aggregator
 from app.eventlog import EventSink, EventWriter, load_session_events, verify_chain
@@ -40,6 +41,7 @@ from app.models import (
     SlowJob,
     SpeakerDigest,
     StartedMessage,
+    EndedMessage,
     Word,
 )
 from app.segmenter import Segmenter
@@ -51,12 +53,15 @@ WARMUP_SILENCE_S = 1.0
 MAX_RECONNECTS = 3
 FINAL_RESULTS_TIMEOUT_S = 10.0
 SUMMARY_EVERY_TURNS = 6
-ASYNC_JOB_TIMEOUT_S = 20.0  # Gemini grounded verdict / prefetch / summarize
+# Gemini grounded verdict (search + page fetch) / prefetch / summarize. Off the hot path: original
+# mode gives the agent ~1 min of lead, so a slow verdict is still in time. Settable from .env.
+ASYNC_JOB_TIMEOUT_S = env_float("ASYNC_JOB_TIMEOUT_S", 45.0)
 ASYNC_WORKERS = 2
-# _lane cancels a lane that exceeds this. Every lane budget derives from it. 1.2 s is the design
-# target; on Groq's free-tier reasoning models (~0.5 s a call) run with LANE_TIMEOUT_S=2.5 in the
-# environment. The audience view is delayed 2.5 s, so a flag still lands with its line.
-LANE_TIMEOUT_S = float(os.environ.get("LANE_TIMEOUT_S", "1.2"))
+# _lane cancels a lane that exceeds this. Every lane budget derives from it, including the share
+# the Groq/Gemini pair keeps for its fallback (app/llm/client.py). 1.2 s is the design target; on
+# Groq's free tier use 2.5, and with LLM_PROVIDER=gemini (Gemini first, ~2-3 s) use 6-10.
+# Read from the environment or backend/.env.
+LANE_TIMEOUT_S = env_float("LANE_TIMEOUT_S", 1.2)
 
 Source = Literal["replay", "deepgram", "events"]
 
@@ -273,6 +278,7 @@ class SessionRunner:
         self._lane_tasks: set[asyncio.Task[Any]] = set()
         self._done = asyncio.Event()
         self._finishing = False
+        self.ended_clip_time: float | None = None  # set by _finish: seconds of clip played
 
     @property
     def lane_timeouts(self) -> int:
@@ -296,7 +302,8 @@ class SessionRunner:
         self.ready = True
         log.info("warm-up for %s done in %.1fs (intel=%s, source=%s)", self.session_id, time.monotonic() - t,
                  self.intel.name, self.source)
-        await self.operator.broadcast(ReadyMessage(session_id=self.session_id))
+        msg = ReadyMessage(session_id=self.session_id)
+        await asyncio.gather(self.operator.broadcast(msg), self.audience.broadcast(msg))
 
     def speaker_ids(self) -> list[str]:
         """Non-moderator speakers of the clip, from the timeline (or the transcript)."""
@@ -410,6 +417,9 @@ class SessionRunner:
             t.cancel()
         await asyncio.gather(*self._background, return_exceptions=True)
         await self.aggregator.stop()
+        if CACHE.hits or CACHE.misses:
+            log.info("analysis cache for %s: %d reused, %d new (since server start); stored per prompt: %s",
+                     self.session_id, CACHE.hits, CACHE.misses, CACHE.stats()["stored"])
         self.writer.put("session_end", {"session_id": self.session_id, "metrics": self.metrics.snapshot().model_dump(),
                                         "p95_bank_ms": self.metrics.p95_bank_ms, "lane_timeouts": self.lane_timeouts,
                                         "async_timeouts": self.async_timeouts, "reconnects": self.reconnects})
@@ -420,6 +430,11 @@ class SessionRunner:
         if self.t0_wall is not None:
             self._db_task(dbm.save_session, self.session_id, ended_at=time.time(), event_count=self.writer.count,
                           lane_timeouts=self.lane_timeouts, reconnects=self.reconnects)
+            # Tell the views, so their clocks stop here instead of counting on forever.
+            played = max(0.0, (time.time() - self.t0_wall) * self.speed)
+            self.ended_clip_time = round(min(played, self.clip.duration) if self.clip.duration else played, 2)
+            msg = EndedMessage(session_id=self.session_id, clip_time=self.ended_clip_time)
+            await asyncio.gather(self.operator.broadcast(msg), self.audience.broadcast(msg), return_exceptions=True)
         self._done.set()
 
     def _db_task(self, fn: Callable[..., Awaitable[Any]], *args: Any, **kw: Any) -> None:

@@ -415,7 +415,7 @@ async def test_fallback_skipped_when_remaining_below_minimum(monkeypatch, caplog
 
 async def test_fast_http_error_retries_groq_once(monkeypatch):
     request = httpx.Request('POST', 'https://example.invalid')
-    error = httpx.HTTPStatusError('429', request=request, response=httpx.Response(429, request=request))
+    error = httpx.HTTPStatusError('500', request=request, response=httpx.Response(500, request=request))
     groq = AsyncMock(side_effect=[error, ('{"ok":true}', {'prompt_tokens': 1})])
     gemini = AsyncMock(return_value=('{"ok":true}', {}))
     monkeypatch.setattr(client, '_groq', groq)

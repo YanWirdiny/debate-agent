@@ -34,9 +34,23 @@ export function Audience() {
   const wantOriginal = useMemo(() => !new URLSearchParams(location.search).has("trimmed"), []);
   const refresh = useRef(async () => {
     const st = await fetchState();
-    if (st) setSession({ clipId: st.clip_id, sessionId: st.session_id, t0Wall: st.t0_wall, speed: st.speed });
+    if (st) {
+      // If the session changed (e.g. operator loaded a new clip while we were connected or briefly
+      // disconnected and missed the `ready` broadcast), reset before writing the new session into
+      // the store so stale segments from the previous clip are not mixed with the new ones.
+      const view = useView.getState();
+      if (view.sessionId !== null && st.session_id !== null && view.sessionId !== st.session_id) {
+        view.reset();
+      }
+      setSession({ clipId: st.clip_id, sessionId: st.session_id, t0Wall: st.t0_wall, speed: st.speed });
+    }
     if (st?.clip_id && wantOriginalRef.current) setSource(await fetchSource(st.clip_id)); // retried on every load/start
   });
+
+  // Clear any state left by a previous view (e.g. navigating from /operator in the same SPA tab).
+  useEffect(() => {
+    useView.getState().reset();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One audible audience tab per browser: joining here mutes every other audience tab (old tabs
   // left open otherwise play their own copy of the debate on top of this one).

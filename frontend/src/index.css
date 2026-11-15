@@ -1,9 +1,95 @@
 @import "tailwindcss";
 
+/*
+ * Palette (the five brand colors), plus the ramps the app is built from:
+ *   Antique White #F1E5D5 · Almond Cream #E8DDD2 · Yale Blue #0D3C64 · Mahogany Red #B20716 · Ink Black #02091E
+ *
+ * Light only: the two backgrounds are Antique White (cream) and Almond Cream (almond). Ink is for
+ * text, Yale Blue and Mahogany for accents. Existing screens use Tailwind's zinc / emerald / red
+ * names; they are remapped here instead of rewritten (zinc-950/900 = the two backgrounds,
+ * zinc-100 = ink text). New pages use the brand names directly.
+ *
+ * The seven finding colors (F M D L C U V, src/categories.ts) are NOT brand colors: they keep their
+ * own hues (Radix step 11, readable on cream) so a color always means a finding, paired with its letter.
+ */
+@theme {
+  /* Brand */
+  --color-cream: #f1e5d5; /* Antique White: page background */
+  --color-almond: #e8ddd2; /* Almond Cream: alternate sections, cards */
+  --color-yale: #0d3c64;
+  --color-yale-light: #1d5f99;
+  --color-mahogany: #b20716;
+  --color-ink: #02091e; /* text, never a background */
+
+  /* zinc = cream -> ink. 950/900 are the two backgrounds, 100 is body text. */
+  --color-zinc-50: #02091e;
+  --color-zinc-100: #02091e;
+  --color-zinc-200: #1a1f2e;
+  --color-zinc-300: #2f3240;
+  --color-zinc-400: #4b4a4f;
+  --color-zinc-500: #6a645f;
+  --color-zinc-600: #9a9086;
+  --color-zinc-700: #cdbfae; /* borders, hover */
+  --color-zinc-800: #e8ddd2; /* surfaces (cards, buttons) = Almond Cream; borders on cream stay visible */
+  --color-zinc-900: #e8ddd2;
+  --color-zinc-950: #f1e5d5;
+
+  /* emerald = Yale Blue (primary action, connected, verified badge) */
+  --color-emerald-200: #0d3c64;
+  --color-emerald-300: #0d3c64;
+  --color-emerald-500: #1d5f99;
+  --color-emerald-600: #1d5f99;
+  --color-emerald-700: #0d3c64;
+  --color-emerald-900: #d6e0ea;
+
+  /* red = Mahogany (live, kill, errors): light tints behind, dark mahogany text */
+  --color-red-100: #6e0a13;
+  --color-red-300: #8e0812;
+  --color-red-400: #b20716;
+  --color-red-600: #b20716;
+  --color-red-700: #d9989b;
+  --color-red-800: #cf8a8e;
+  --color-red-950: #f3d6d3;
+
+  /* Banners and the speaker name color, light tints with dark text */
+  --color-sky-100: #0d3c64;
+  --color-sky-300: #0d3c64;
+  --color-sky-700: #a9bfd4;
+  --color-sky-950: #dbe3ea;
+  --color-amber-100: #5a3b00;
+  --color-amber-200: #0d3c64;
+  --color-amber-700: #d6b37c;
+  --color-amber-950: #f1dfc0;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-serif: ui-serif, "New York", "Iowan Old Style", "Charter", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
 :root {
-  color-scheme: dark;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: #09090b;
+  color-scheme: light;
+  font-family: var(--font-sans);
+  background: var(--color-cream);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 @layer components {
@@ -19,4 +105,63 @@
   .section {
     @apply mt-8 mb-3 border-b border-zinc-800 pb-1 text-sm font-semibold tracking-wide text-zinc-400 uppercase;
   }
+
+  /* Site (home, demo, help) */
+  .pill-yale {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-[15px] font-medium transition-colors bg-yale text-cream hover:bg-yale-light;
+  }
+  .pill-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-[15px] font-medium transition-colors border border-current/30 hover:border-current/70;
+  }
+  /* Apple-style section label: sentence case, semibold, sits right above the headline. */
+  .eyebrow {
+    @apply text-xl font-semibold tracking-[-0.01em] md:text-2xl;
+  }
+  /* Headlines: heavy display sans, tight tracking and leading, big. */
+  .display {
+    @apply font-display font-bold leading-[1.02] tracking-[-0.035em] text-balance;
+  }
+  /* Lead paragraph under a headline. */
+  .lead {
+    @apply text-xl leading-snug font-semibold tracking-[-0.01em] text-ink/60 md:text-2xl;
+  }
+}
+
+/* The seven finding colors as one strip: logo underline, dividers, loading bar. */
+.finding-strip {
+  background: linear-gradient(
+    90deg,
+    #ce2c31 0 14.28%,
+    #cc4e00 0 28.56%,
+    #ab6400 0 42.84%,
+    #8145b5 0 57.12%,
+    #0d74ce 0 71.4%,
+    #60646c 0 85.68%,
+    #218358 0 100%
+  );
+}
+
+/* A data packet travelling along an active pipeline edge. */
+@keyframes beam {
+  to {
+    stroke-dashoffset: -40;
+  }
+}
+.beam {
+  stroke-dasharray: 6 14;
+  animation: beam 0.9s linear infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }

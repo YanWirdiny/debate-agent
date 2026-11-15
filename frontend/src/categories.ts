@@ -1,14 +1,15 @@
 import type { Annotation, Category } from "./types";
 
-/** CONTEXT.md section 3. Color is always paired with the letter (color-blind safe). */
+/** CONTEXT.md section 3. Color is always paired with the letter (color-blind safe). Radix step-11
+ * hues: the light (cream) UI needs the darker step for 3:1 contrast and white chip letters. */
 export const CATEGORIES: Record<Category, { label: string; color: string }> = {
-  F: { label: "Factual error", color: "#E5484D" },
-  M: { label: "Misleading", color: "#F76B15" },
-  D: { label: "Data misuse", color: "#FFB224" },
-  L: { label: "Logical fallacy", color: "#8E4EC6" },
-  C: { label: "Differs from prior statement", color: "#0090FF" },
-  U: { label: "Unverifiable", color: "#8B8D98" },
-  V: { label: "Verified", color: "#30A46C" },
+  F: { label: "Factual error", color: "#CE2C31" },
+  M: { label: "Misleading", color: "#CC4E00" },
+  D: { label: "Data misuse", color: "#AB6400" },
+  L: { label: "Logical fallacy", color: "#8145B5" },
+  C: { label: "Differs from prior statement", color: "#0D74CE" },
+  U: { label: "Unverifiable", color: "#60646C" },
+  V: { label: "Verified", color: "#218358" },
 };
 
 export const FALLACY_LABELS: Record<string, string> = {

@@ -70,6 +70,8 @@ export interface ServerState {
   speed: number;
   source: string;
   intel: string;
+  /** Clip seconds where the session ended; null/absent while it runs. */
+  ended_clip_time?: number | null;
 }
 
 export async function fetchState(): Promise<ServerState | null> {
